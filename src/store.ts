@@ -224,7 +224,10 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
     set({ isLoading: true, error: null })
     try {
       const plan = await AssistantService.createDemo()
-      const variants = PlacementService.createVariants(plan)
+      const generatedVariants = PlacementService.createVariants(plan)
+      // Демо должно показывать именно заранее рассчитанную валидную 10/10 раскладку,
+      // а не сырую схему до оптимизации. Остальные варианты остаются альтернативами.
+      const variants = [plan, ...generatedVariants.slice(1)]
       const calculations = await SolverService.summarize(plan)
       set({ plan, variants, selectedVariant: 0, calculations, isLoading: false, selectedPallet: plan.pallets[0]?.id ?? null, history: [], rotationFeedback: null })
     } catch { set({ isLoading: false, error: 'Не удалось построить демо-план' }) }
