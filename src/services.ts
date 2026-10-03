@@ -102,7 +102,7 @@ export const PlacementService = {
               group.length === 1200 && group.width === 800 &&
               length === 800 && width === 1200 &&
               width * 2 <= plan.vehicleWidth
-            const orientationBonus = eurRowOrientation ? 400000 : 0
+            const orientationBonus = eurRowOrientation ? 10000000 : 0
 
             // Strongly prefer the second pallet to use the opposite side
             // when a candidate keeps the resulting CG near the center.
