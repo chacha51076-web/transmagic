@@ -72,6 +72,7 @@ const getLoadGeometry = (plan: LoadPlan) => {
   const cgY = totalWeight > 0
     ? (plan.pallets.reduce((sum, p) => sum + p.weight * (p.y + p.width / 2), 0) + plan.obstacles.reduce((sum, o) => sum + (o.weight ?? 0) * (o.y + o.width / 2), 0)) / totalWeight
     : plan.vehicleWidth / 2
+  const automatic = plan.axles.length < 2 || plan.axles.some(axle => axle.source === 'AUTO')
   const axleLoads = !automatic && sortedAxles.length === 2 && totalWeight > 0
     ? sortedAxles.map((axle, index) => {
         const rear = sortedAxles[0]
@@ -98,7 +99,6 @@ const getLoadGeometry = (plan: LoadPlan) => {
         percent: null,
         overCapacity: false,
       }))
-  const automatic = plan.axles.length < 2 || plan.axles.some(axle => axle.source === 'AUTO')
   return { axlePositions, axleLoads, cgX, cgY, totalWeight, assumed: automatic }
 }
 const presets = [
