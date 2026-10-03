@@ -218,6 +218,15 @@
 .cg-label-bg{fill:#fff4e8;stroke:#b35a24;stroke-width:6}
 .cg-label{fill:#8b4218;font-size:32px;font-weight:800}
 .load-model-note{fill:#8b4218;font-size:34px;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:10}
+.axle-total-note{fill:#587077;font-size:26px;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:8}
+.axle-load-badge rect{fill:#f3f7f7;stroke:#8ba0a4;stroke-width:6;filter:drop-shadow(0 3px 3px rgba(24,47,53,.12))}
+.axle-load-badge.danger rect{fill:#fff0e9;stroke:#d27a52}
+.axle-load-badge.warning rect{fill:#fff8e8;stroke:#d3aa58}
+.axle-load-value{fill:#29464c;font-size:30px;font-weight:800}
+.axle-load-badge.danger .axle-load-value{fill:#a85635}
+.axle-load-badge.warning .axle-load-value{fill:#8b6a23}
+.axle-load-note{fill:#72878c;font-size:20px;font-weight:600}
+@media(max-width:760px){.axle-load-value{font-size:26px}.axle-load-note{font-size:18px}}
 
 .variant-picker{margin:10px 0 14px;padding:10px 12px;border:1px solid #dbe4e6;border-radius:10px;background:#fff}
 .variant-picker>span{display:block;color:#82979b;font:500 9px 'DM Mono';letter-spacing:.08em;margin-bottom:7px}
