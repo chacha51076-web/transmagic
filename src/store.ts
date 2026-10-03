@@ -27,54 +27,71 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
     if (!plan || selectedPallet == null) return
     const pallet = plan.pallets.find(p => p.id === selectedPallet)
     if (!pallet || !pallet.rotatable || pallet.length === pallet.width) return
+
     const nextLength = pallet.width
     const nextWidth = pallet.length
-    const cx = pallet.x + pallet.length / 2
-    const cy = pallet.y + pallet.width / 2
-    const nextX = cx - nextLength / 2
-    const nextY = cy - nextWidth / 2
-    const overlaps = (a: {x:number;y:number;length:number;width:number}, b: {x:number;y:number;length:number;width:number}) =>
-      a.x < b.x + b.length && a.x + a.length > b.x && a.y < b.y + b.width && a.y + a.width > b.y
+    const centerX = pallet.x + pallet.length / 2
+    const centerY = pallet.y + pallet.width / 2
     const blocked = [...plan.obstacles, ...plan.unavailableZones, ...plan.gaps]
-    const isFree = (x: number, y: number) => {
-      const candidate = { ...pallet, length: nextLength, width: nextWidth, x, y }
-      return x >= 0 && y >= 0 && x + nextLength <= plan.vehicleLength && y + nextWidth <= plan.vehicleWidth &&
-        !blocked.some(b => overlaps(candidate, b)) &&
-        !plan.pallets.some(p => p.id !== pallet.id && overlaps(candidate, p))
+    const overlaps = (a: Rect, b: Rect) =>
+      a.x < b.x + b.length && a.x + a.length > b.x && a.y < b.y + b.width && a.y + a.width > b.y
+    const isFree = (x: number, y: number, currentPallet = pallet) => {
+      const candidate = { ...currentPallet, x, y, length: nextLength, width: nextWidth }
+      return x >= 0 && y >= 0 &&
+        x + nextLength <= plan.vehicleLength &&
+        y + nextWidth <= plan.vehicleWidth &&
+        !blocked.some(zone => overlaps(candidate, zone)) &&
+        !plan.pallets.some(other => other.id !== pallet.id && overlaps(candidate, other))
     }
-    const candidates: Array<{ x: number; y: number; distance: number }> = []
-    if (isFree(nextX, nextY)) candidates.push({ x: nextX, y: nextY, distance: 0 })
+
+    const nearestCandidates: Array<{ x: number; y: number; distance: number }> = []
+    const exactX = centerX - nextLength / 2
+    const exactY = centerY - nextWidth / 2
+    if (isFree(exactX, exactY)) nearestCandidates.push({ x: exactX, y: exactY, distance: 0 })
     const step = 50
     const radius = Math.max(nextLength, nextWidth)
     for (let dx = -radius; dx <= radius; dx += step) {
       for (let dy = -radius; dy <= radius; dy += step) {
-        const x = Math.round((cx - nextLength / 2 + dx) / step) * step
-        const y = Math.round((cy - nextWidth / 2 + dy) / step) * step
-        if (isFree(x, y)) candidates.push({ x, y, distance: Math.hypot(x - nextX, y - nextY) })
+        const x = Math.round((exactX + dx) / step) * step
+        const y = Math.round((exactY + dy) / step) * step
+        if (isFree(x, y)) nearestCandidates.push({ x, y, distance: Math.hypot(x - exactX, y - exactY) })
       }
     }
-    const best = candidates.sort((a, b) => a.distance - b.distance)[0]
-    if (!best) {
-      set({ error: 'Развернуть нельзя: рядом нет свободного места. Выберите другую паллету или сначала освободите место.' })
+    const nearest = nearestCandidates.sort((a, b) => a.distance - b.distance)[0]
+    if (!nearest) {
+      set({ error: 'Развернуть нельзя: рядом нет свободного места. Попробуйте уплотнить груз вручную.' })
       return
     }
-    const candidate = { ...pallet, length: nextLength, width: nextWidth, x: best.x, y: best.y }
-    const nextPlan = { ...plan, pallets: plan.pallets.map(p => p.id === pallet.id ? candidate : p) }
-    const beforeSummary = await SolverService.summarize(plan)
-    const nextSummary = await SolverService.summarize(nextPlan)
-    const nextVariants = variants.map((v, i) => i === selectedVariant ? nextPlan : v)
-    const totalBefore = plan.pallets.reduce((sum, p) => sum + p.weight, 0)
-    const totalAfter = nextPlan.pallets.reduce((sum, p) => sum + p.weight, 0)
-    const from = totalBefore > 0 ? {
-      x: plan.pallets.reduce((sum, p) => sum + p.weight * (p.x + p.length / 2), 0) / totalBefore,
-      y: plan.pallets.reduce((sum, p) => sum + p.weight * (p.y + p.width / 2), 0) / totalBefore,
-    } : { x: plan.vehicleLength / 2, y: plan.vehicleWidth / 2 }
-    const to = totalAfter > 0 ? {
-      x: nextPlan.pallets.reduce((sum, p) => sum + p.weight * (p.x + p.length / 2), 0) / totalAfter,
-      y: nextPlan.pallets.reduce((sum, p) => sum + p.weight * (p.y + p.width / 2), 0) / totalAfter,
-    } : { x: nextPlan.vehicleLength / 2, y: nextPlan.vehicleWidth / 2 }
-    void beforeSummary
-    set({ plan: nextPlan, variants: nextVariants, calculations: nextSummary, rotationFeedback: { palletId: pallet.id, fromX: from.x, fromY: from.y, toX: to.x, toY: to.y }, error: null })
+
+    const rotatedPlan: LoadPlan = {
+      ...plan,
+      pallets: plan.pallets.map(p => p.id === pallet.id
+        ? { ...p, length: nextLength, width: nextWidth, x: nearest.x, y: nearest.y }
+        : p),
+    }
+
+    // После разворота автоматически уплотняем весь ряд: выбранная паллета
+    // сохраняет новую ориентацию, остальные сдвигаются только в свободные
+    // точки, не пересекают препятствия и стараются сохранить исходный ЦМ.
+    const compactedPlan = compactPallets(rotatedPlan, pallet.id)
+    const nextSummary = await SolverService.summarize(compactedPlan)
+    const nextVariants = variants.map((v, i) => i === selectedVariant ? compactedPlan : v)
+
+    const from = calculateCg(plan)
+    const to = calculateCg(compactedPlan)
+    set({
+      plan: compactedPlan,
+      variants: nextVariants,
+      calculations: nextSummary,
+      rotationFeedback: {
+        palletId: pallet.id,
+        fromX: from.x,
+        fromY: from.y,
+        toX: to.x,
+        toY: to.y,
+      },
+      error: null,
+    })
   },
   setSelectedPalletWeight: async (weight) => {
     const { plan, selectedPallet, variants, selectedVariant } = get()
