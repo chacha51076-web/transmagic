@@ -27,6 +27,71 @@ export const AssistantService = {
 
 export type PlacementVariant = 'BALANCED' | 'REAR' | 'AXLE'
 
+export interface StaticLoadAnalysis {
+  totalWeight: number
+  cgX: number
+  cgY: number
+  axlePositions: number[]
+  axleLoads: number[]
+  valid: boolean
+  reason?: string
+}
+
+export const calculateStaticLoad = (plan: LoadPlan): StaticLoadAnalysis => {
+  const items = [
+    ...plan.pallets.map(p => ({ weight: p.weight, x: p.x + p.length / 2, y: p.y + p.width / 2 })),
+    ...plan.obstacles
+      .filter(o => (o.weight ?? 0) > 0)
+      .map(o => ({ weight: o.weight ?? 0, x: o.x + o.length / 2, y: o.y + o.width / 2 })),
+  ]
+  const totalWeight = items.reduce((sum, item) => sum + item.weight, 0)
+  const cgX = totalWeight > 0
+    ? items.reduce((sum, item) => sum + item.weight * item.x, 0) / totalWeight
+    : plan.vehicleLength / 2
+  const cgY = totalWeight > 0
+    ? items.reduce((sum, item) => sum + item.weight * item.y, 0) / totalWeight
+    : plan.vehicleWidth / 2
+  const axles = plan.axles.slice().sort((a, b) => a.position - b.position)
+  const axlePositions = axles.map(axle => axle.position)
+
+  if (axlePositions.length < 2 || totalWeight <= 0) {
+    return { totalWeight, cgX, cgY, axlePositions, axleLoads: [], valid: false, reason: 'Недостаточно данных для расчёта' }
+  }
+  const first = axlePositions[0]
+  const last = axlePositions[axlePositions.length - 1]
+  if (cgX < first || cgX > last) {
+    return { totalWeight, cgX, cgY, axlePositions, axleLoads: [], valid: false, reason: 'Центр массы находится вне базы осей' }
+  }
+
+  const loads = axlePositions.map(() => 0)
+  const rightIndex = Math.max(0, axlePositions.findIndex(position => position >= cgX))
+  const leftIndex = Math.max(0, rightIndex - 1)
+
+  if (axlePositions[rightIndex] === cgX) {
+    loads[rightIndex] = totalWeight
+  } else {
+    const left = axlePositions[leftIndex]
+    const right = axlePositions[rightIndex]
+    const span = right - left
+    if (span <= 0) {
+      return { totalWeight, cgX, cgY, axlePositions, axleLoads: [], valid: false, reason: 'Некорректное расстояние между осями' }
+    }
+    loads[leftIndex] = totalWeight * (right - cgX) / span
+    loads[rightIndex] = totalWeight * (cgX - left) / span
+  }
+
+  const valid = loads.every(load => Number.isFinite(load) && load >= -0.001)
+  return {
+    totalWeight,
+    cgX,
+    cgY,
+    axlePositions,
+    axleLoads: valid ? loads.map(load => Math.max(0, load)) : [],
+    valid,
+    reason: valid ? undefined : 'Получена некорректная реакция оси',
+  }
+}
+
 const normalizeFixedEquipment = (plan: LoadPlan): LoadPlan => ({
   ...plan,
   obstacles: plan.obstacles.map(obstacle => obstacle.id === 'cooler'
