@@ -30,6 +30,7 @@ interface LoadPlanState {
   setSelectedPallet: (id: number | null) => void
   rotateSelectedPallet: () => Promise<void>
   movePallet: (id: number, x: number, y: number) => Promise<boolean>
+  moveAxlePosition: (id: string, x: number) => Promise<boolean>
   undoLastMove: () => Promise<void>
   suggestVariant: () => Promise<void>
   setSelectedPalletWeight: (weight: number) => Promise<void>
@@ -116,6 +117,37 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
     }))
     return true
   },
+  moveAxlePosition: async (id, x) => {
+    const { plan } = get()
+    if (!plan || plan.axles.length < 2 || !Number.isFinite(x)) return false
+    const sorted = plan.axles.slice().sort((a, b) => a.position - b.position)
+    const targetIndex = sorted.findIndex(axle => axle.id === id)
+    if (targetIndex < 0) return false
+    const minGap = 500
+    const minX = targetIndex > 0 ? sorted[targetIndex - 1].position + minGap : 0
+    const maxX = targetIndex < sorted.length - 1 ? sorted[targetIndex + 1].position - minGap : plan.vehicleLength
+    if (x < minX || x > maxX) {
+      set({ error: 'Ось нельзя поставить в эту позицию: сохраняйте порядок и расстояние между осями.' })
+      return false
+    }
+    const rounded = Math.round(x / 50) * 50
+    const nextAxles = plan.axles.map(axle => ({
+      ...axle,
+      position: axle.id === id ? rounded : axle.position,
+      source: 'FIXED' as const,
+    }))
+    const nextPlan = { ...plan, axles: nextAxles }
+    const calculations = await SolverService.summarize(nextPlan)
+    set(state => ({
+      history: [...state.history, plan].slice(-30),
+      plan: nextPlan,
+      calculations,
+      error: null,
+      rotationFeedback: null,
+    }))
+    return true
+  },
+
   setSelectedPalletWeight: async (weight) => {
     const { plan, selectedPallet, variants, selectedVariant } = get()
     if (!plan || selectedPallet == null || !Number.isFinite(weight) || weight < 1) return
