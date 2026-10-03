@@ -72,7 +72,7 @@ const getLoadGeometry = (plan: LoadPlan) => {
   const cgY = totalWeight > 0
     ? (plan.pallets.reduce((sum, p) => sum + p.weight * (p.y + p.width / 2), 0) + plan.obstacles.reduce((sum, o) => sum + (o.weight ?? 0) * (o.y + o.width / 2), 0)) / totalWeight
     : plan.vehicleWidth / 2
-  const axleLoads = sortedAxles.length === 2 && totalWeight > 0
+  const axleLoads = !automatic && sortedAxles.length === 2 && totalWeight > 0
     ? sortedAxles.map((axle, index) => {
         const rear = sortedAxles[0]
         const front = sortedAxles[1]
@@ -764,13 +764,17 @@ function Visualizer() {
         {(() => {
           const load = loadGeometry.axleLoads.find(item => item.id === axle.id)
           if (!load) return null
-          const loadText = load.loadKg == null
-            ? 'ЦМ вне базы'
-            : Math.round(load.loadKg).toLocaleString('ru-RU') + ' кг · ' + load.percent!.toFixed(0) + '%'
+          const loadText = loadGeometry.assumed
+            ? 'Автоматически · не проверено'
+            : load.loadKg == null
+              ? 'ЦМ вне базы'
+              : Math.round(load.loadKg).toLocaleString('ru-RU') + ' кг · ' + load.percent!.toFixed(0) + '%'
           const statusClass = load.overCapacity ? 'axle-load-badge danger' : load.loadKg == null ? 'axle-load-badge warning' : 'axle-load-badge'
-          const subText = load.loadKg == null
-            ? 'Нагрузка не определена'
-            : load.capacityKg > 0
+          const subText = loadGeometry.assumed
+            ? 'Уточните положение осей для расчёта'
+            : load.loadKg == null
+              ? 'Нагрузка не определена'
+              : load.capacityKg > 0
               ? 'допуск ' + Math.round(load.capacityKg).toLocaleString('ru-RU') + ' кг'
               : 'допустимая нагрузка не указана'
           return <g className={statusClass}>
