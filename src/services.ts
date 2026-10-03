@@ -347,7 +347,7 @@ export const PlacementService = {
 
     const selected: SearchState[] = []
     for (const state of bestStates) {
-      if (selected.length === 0 || selected.every(other => diversityDistance(other.pallets, state.pallets) >= Math.max(2, Math.ceil(maxPlaced * 0.25)))) {
+      if (selected.length === 0 || selected.every(other => diversityDistance(other.pallets, state.pallets) >= Math.max(2, Math.ceil(maxPlaced * 0.15)))) {
         selected.push(state)
       }
       if (selected.length >= 3) break
