@@ -35,7 +35,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
     set({ isLoading: true, error: null, variants: plans, selectedVariant: 0 })
     try {
       const calculations = await SolverService.summarize(plan)
-      set({ plan, variants: [plan], selectedVariant: 0, calculations, isLoading: false, selectedPallet: plan.pallets[0]?.id ?? null })
+      set({ plan, variants: plans, selectedVariant: 0, calculations, isLoading: false, selectedPallet: plan.pallets[0]?.id ?? null })
     } catch { set({ isLoading: false, error: 'Не удалось построить варианты' }) }
   },
   loadDemo: async () => {
