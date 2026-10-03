@@ -153,9 +153,20 @@ function PlanForm() {
         : [[item.group.length, item.group.width]]
       let best: { x: number; y: number; length: number; width: number; score: number } | undefined
       for (const [length, width] of orientations) {
+        // Для стандартной EUR-паллеты при кузове шире 2,4 м
+        // предпочитаем классическую транспортную раскладку:
+        // короткая сторона 0,8 м вдоль X (длины кузова),
+        // длинная сторона 1,2 м поперёк кузова.
+        // Это даёт 2 паллеты в ряд при внутренней ширине 2,45 м.
+        const shortSideAlongLength =
+          item.group.length !== item.group.width &&
+          length === Math.min(item.group.length, item.group.width) &&
+          width === Math.max(item.group.length, item.group.width) &&
+          width * 2 <= v.vehicleWidth * 1000
+        const orientationBonus = shortSideAlongLength ? 500000000 : 0
         for (const point of candidatePoints(length, width, placements)) {
           if (!canPlace(point.x, point.y, length, width, placements)) continue
-          const score = scoreCandidate(point.x, point.y, length, width, placements)
+          const score = scoreCandidate(point.x, point.y, length, width, placements) + orientationBonus
           if (!best || score > best.score) best = { ...point, length, width, score }
         }
       }
