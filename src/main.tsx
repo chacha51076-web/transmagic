@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, ty
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useFieldArray, useForm } from 'react-hook-form'
 import { z } from 'zod'
-import { calculateStaticLoad, PlacementService, SpeechService } from './services'
+import { calculateStaticLoad, findMinimumVehicleSize, PlacementService, SpeechService } from './services'
 import { useLoadPlanStore } from './store'
 import type { CheckStatus, CargoGroup, LoadPlan } from './types'
 import './styles.css'
@@ -529,6 +529,8 @@ function Visualizer() {
     valid: boolean
   } | null>(null)
   const [axleDrag, setAxleDrag] = useState<{ id: string; originalX: number; x: number } | null>(null)
+  const [vehicleFitSuggestion, setVehicleFitSuggestion] = useState<ReturnType<typeof findMinimumVehicleSize> | null>(null)
+  const [weightDraft, setWeightDraft] = useState('')
   useEffect(() => {
     if (!axleDrag || !plan) return
     const handleMove = (event: globalThis.PointerEvent) => {
@@ -571,6 +573,42 @@ function Visualizer() {
       window.removeEventListener('pointercancel', handleUp)
     }
   }, [axleDrag, plan, moveAxlePosition])
+
+  useEffect(() => {
+    let active = true
+    if (!plan) {
+      setVehicleFitSuggestion(null)
+      return
+    }
+    const placement = calculations.find(item => item.id === 'count')
+    const match = placement?.value.match(/^(\d+) \/ (\d+)$/)
+    const placed = match ? Number(match[1]) : plan.pallets.length
+    const requested = match ? Number(match[2]) : plan.cargoGroups.reduce((sum, group) => sum + group.count, 0)
+
+    if (placed >= requested) {
+      setVehicleFitSuggestion(null)
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      const suggestion = findMinimumVehicleSize(plan)
+      if (active) setVehicleFitSuggestion(suggestion)
+    }, 40)
+
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [plan, calculations])
+
+  useEffect(() => {
+    if (!selectedPallet) {
+      setWeightDraft('')
+      return
+    }
+    const current = plan?.pallets.find(p => p.id === selectedPallet)
+    setWeightDraft(current ? String(current.weight) : '')
+  }, [selectedPallet, plan?.pallets.find(p => p.id === selectedPallet)?.weight])
 
   if (!plan) return <main className="visualizer empty"><div className="empty-art">▱ ▱</div><h2>Схема загрузки появится здесь</h2><p>Нажмите «Попробовать пример» или заполните параметры вручную.</p></main>
   const overlapsRect = (a: { x: number; y: number; length: number; width: number }, b: { x: number; y: number; length: number; width: number }) =>
@@ -829,7 +867,24 @@ function Visualizer() {
     <text x={plan.vehicleLength - 20} y={-185} textAnchor="end" className="load-model-note">{loadGeometry.assumed ? 'Оси: автоматическая расчётная модель' : 'Оси: введены пользователем'}</text>
     {loadGeometry.axleLoads.length === 2 && <text x={plan.vehicleLength - 20} y={-145} textAnchor="end" className="axle-total-note">Суммарная масса груза: {Math.round(loadGeometry.totalWeight).toLocaleString('ru-RU')} кг</text>}
   </g>
-})()}<g className="coordinate-system" pointerEvents="none"><line x1="0" y1={plan.vehicleWidth + 175} x2={plan.vehicleLength} y2={plan.vehicleWidth + 175} markerEnd="url(#axisArrow)" /><text x={plan.vehicleLength / 2} y={plan.vehicleWidth + 235} textAnchor="middle">X — ДЛИНА КУЗОВА →</text><line x1="-170" y1={plan.vehicleWidth} x2="-170" y2="0" markerEnd="url(#axisArrow)" /><text x="-245" y={plan.vehicleWidth / 2} textAnchor="middle" transform={`rotate(-90 -245 ${plan.vehicleWidth / 2})`}>Y — ШИРИНА ↑</text><text x="0" y={plan.vehicleWidth + 205} textAnchor="start">0 м</text><text x={plan.vehicleLength} y={plan.vehicleWidth + 205} textAnchor="end">{(plan.vehicleLength / 1000).toLocaleString('ru-RU')} м</text><text x="-195" y={plan.vehicleWidth + 20} textAnchor="end">0 м</text><text x="-195" y="20" textAnchor="end">{(plan.vehicleWidth / 1000).toLocaleString('ru-RU')} м</text><text x={plan.vehicleLength + 80} y={plan.vehicleWidth / 2} className="orientation-label">ПЕРЕД<br/>КАБИНА</text><text x="-20" y={plan.vehicleWidth / 2} textAnchor="end" className="orientation-label">ЗАДНИЕ<br/>ДВЕРИ</text></g></svg></div></section><section className="bottom-info"><div className="selected-card"><span className="mini-pallet">▦</span><div><span className="eyebrow">ВЫБРАНА ПАЛЛЕТА</span><b>Паллета #{selected?.id ?? '—'} <small>· {selected?.weight ?? '—'} кг</small></b>{selected && <><div className="pallet-actions"><button type="button" onClick={() => void rotateSelectedPallet()} disabled={!selected.rotatable || selected.length === selected.width}>↻ Развернуть паллету</button><label>Вес, кг <input type="number" min="1" value={selected.weight} onChange={e => void setSelectedPalletWeight(Number(e.target.value))} /></label></div><div className="compact-hint">Потяните паллету мышью или пальцем. Во время перемещения схема сразу показывает, можно ли поставить груз без пересечения.</div></>}{selected && <div className="pallet-details"><span><b>Габариты в кузове</b> · X: {(selected.length / 1000).toLocaleString('ru-RU')} м · Y: {(selected.width / 1000).toLocaleString('ru-RU')} м</span><span><b>Положение</b> · X: {(selected.x / 1000).toLocaleString('ru-RU')} м · Y: {(selected.y / 1000).toLocaleString('ru-RU')} м</span><span><b>Высота</b> · {(selected.height / 1000).toLocaleString('ru-RU')} м</span><span><b>Ориентация</b> · {orientation}</span></div>}</div>{conflictReason && <div className="conflict-note">⚠ {conflictReason}</div>}</div><div className="summary"><span className="summary-title">ПРОВЕРКИ · ЭТАП 1</span>{calculations.map(c => <div className={`check ${c.id === 'count' && c.status === 'VIOLATION' ? 'check-placement-alert' : ''}`} key={c.id}><span className={`dot ${statusClass[c.status]}`} /><div><b>{c.label}</b><small>{c.note}</small>{c.id === 'count' && c.status === 'VIOLATION' && <div className="placement-alert"><div className="placement-alert-top"><strong>Не помещается: {unplacedCount} шт.</strong><span>{placedCount} из {requestedCount}</span></div><div className="placement-progress"><span style={{ width: `${requestedCount ? Math.min(100, placedCount / requestedCount * 100) : 0}%` }} /></div></div>}</div><strong>{c.value}</strong><em className={statusClass[c.status]}>{statusText[c.status]}</em></div>)}</div></section><div className="mode-note">2D схема · 3D — скоро</div></main>
+})()}<g className="coordinate-system" pointerEvents="none"><line x1="0" y1={plan.vehicleWidth + 175} x2={plan.vehicleLength} y2={plan.vehicleWidth + 175} markerEnd="url(#axisArrow)" /><text x={plan.vehicleLength / 2} y={plan.vehicleWidth + 235} textAnchor="middle">X — ДЛИНА КУЗОВА →</text><line x1="-170" y1={plan.vehicleWidth} x2="-170" y2="0" markerEnd="url(#axisArrow)" /><text x="-245" y={plan.vehicleWidth / 2} textAnchor="middle" transform={`rotate(-90 -245 ${plan.vehicleWidth / 2})`}>Y — ШИРИНА ↑</text><text x="0" y={plan.vehicleWidth + 205} textAnchor="start">0 м</text><text x={plan.vehicleLength} y={plan.vehicleWidth + 205} textAnchor="end">{(plan.vehicleLength / 1000).toLocaleString('ru-RU')} м</text><text x="-195" y={plan.vehicleWidth + 20} textAnchor="end">0 м</text><text x="-195" y="20" textAnchor="end">{(plan.vehicleWidth / 1000).toLocaleString('ru-RU')} м</text><text x={plan.vehicleLength + 80} y={plan.vehicleWidth / 2} className="orientation-label">ПЕРЕД<br/>КАБИНА</text><text x="-20" y={plan.vehicleWidth / 2} textAnchor="end" className="orientation-label">ЗАДНИЕ<br/>ДВЕРИ</text></g></svg></div></section><section className="bottom-info"><div className="selected-card"><span className="mini-pallet">▦</span><div><span className="eyebrow">ВЫБРАНА ПАЛЛЕТА</span><b>Паллета #{selected?.id ?? '—'} <small>· {selected?.weight ?? '—'} кг</small></b>{selected && <><div className="pallet-actions"><button type="button" onClick={() => void rotateSelectedPallet()} disabled={!selected.rotatable || selected.length === selected.width}>↻ Развернуть паллету</button><label>Вес, кг <input type="text" inputMode="decimal" value={weightDraft} onChange={e => setWeightDraft(e.target.value.replace(',', '.'))} onBlur={() => {
+                const parsed = Number(weightDraft)
+                if (Number.isFinite(parsed) && parsed >= 1) void setSelectedPalletWeight(parsed)
+              }} onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  const parsed = Number(weightDraft)
+                  if (Number.isFinite(parsed) && parsed >= 1) void setSelectedPalletWeight(parsed)
+                }
+              }} /></label></div><div className="compact-hint">Потяните паллету мышью или пальцем. Во время перемещения схема сразу показывает, можно ли поставить груз без пересечения.</div></>}{selected && <div className="pallet-details"><span><b>Габариты в кузове</b> · X: {(selected.length / 1000).toLocaleString('ru-RU')} м · Y: {(selected.width / 1000).toLocaleString('ru-RU')} м</span><span><b>Положение</b> · X: {(selected.x / 1000).toLocaleString('ru-RU')} м · Y: {(selected.y / 1000).toLocaleString('ru-RU')} м</span><span><b>Высота</b> · {(selected.height / 1000).toLocaleString('ru-RU')} м</span><span><b>Ориентация</b> · {orientation}</span></div>}</div>{conflictReason && <div className="conflict-note">⚠ {conflictReason}</div>}</div><div className="summary"><span className="summary-title">ПРОВЕРКИ · ЭТАП 1</span>{calculations.map(c => <div className={`check ${c.id === 'count' && c.status === 'VIOLATION' ? 'check-placement-alert' : ''}`} key={c.id}><span className={`dot ${statusClass[c.status]}`} /><div><b>{c.label}</b><small>{c.note}</small>{c.id === 'count' && c.status === 'VIOLATION' && <div className="placement-alert"><div className="placement-alert-top"><strong>Не помещается: {unplacedCount} шт.</strong><span>{placedCount} из {requestedCount}</span></div><div className="placement-progress"><span style={{ width: `${requestedCount ? Math.min(100, placedCount / requestedCount * 100) : 0}%` }} /></div></div>}</div><strong>{c.value}</strong><em className={statusClass[c.status]}>{statusText[c.status]}</em></div>)}</div>{vehicleFitSuggestion && <div className="vehicle-fit-card">
+    <div className="vehicle-fit-title">Не весь груз помещается</div>
+    <div className="vehicle-fit-main">Текущий кузов: {(vehicleFitSuggestion.currentLength / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 1 })} × {(vehicleFitSuggestion.currentWidth / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} м</div>
+    <div className="vehicle-fit-options">
+      {vehicleFitSuggestion.lengthAtCurrentWidth != null && <div><b>Оставить ширину { (vehicleFitSuggestion.currentWidth / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) } м</b><span>нужна длина ≈ {(vehicleFitSuggestion.lengthAtCurrentWidth / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 1 })} м</span></div>}
+      {vehicleFitSuggestion.widthAtCurrentLength != null && <div><b>Оставить длину { (vehicleFitSuggestion.currentLength / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 1 }) } м</b><span>нужна ширина ≈ {(vehicleFitSuggestion.widthAtCurrentLength / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} м</span></div>}
+    </div>
+    <small>{vehicleFitSuggestion.note}</small>
+  </div>}</div></section><div className="mode-note">2D схема · 3D — скоро</div></main>
 }
 
 function App() {
