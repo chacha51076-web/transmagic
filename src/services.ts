@@ -423,7 +423,7 @@ export interface VehicleFitSuggestion {
   note: string
 }
 
-export const findMinimumVehicleSize = (plan: LoadPlan): VehicleFitSuggestion | null => {
+export const findMinimumVehicleSize = async (plan: LoadPlan): Promise<VehicleFitSuggestion | null> => {
   const requested = plan.cargoGroups.reduce((sum, group) => sum + group.count, 0)
   const currentPlaced = plan.pallets.length
   if (currentPlaced >= requested) return null
@@ -438,7 +438,7 @@ export const findMinimumVehicleSize = (plan: LoadPlan): VehicleFitSuggestion | n
       vehicleWidth,
       pallets: [],
     }
-    const variants = PlacementService.createVariants(candidatePlan)
+    const variants = await PlacementService.createVariants(candidatePlan)
     return Math.max(0, ...variants.map(variant => variant.pallets.length)) >= requested
   }
 
@@ -448,7 +448,7 @@ export const findMinimumVehicleSize = (plan: LoadPlan): VehicleFitSuggestion | n
   let lengthAtCurrentWidth: number | null = null
   const maxLength = Math.max(plan.vehicleLength + 5000, maxCargoLength + 1000)
   for (let length = Math.max(1000, Math.ceil(maxCargoLength / 100) * 100); length <= maxLength; length += 100) {
-    if (quickFit(length, plan.vehicleWidth)) {
+    if (await quickFit(length, plan.vehicleWidth)) {
       lengthAtCurrentWidth = length
       break
     }
@@ -457,7 +457,7 @@ export const findMinimumVehicleSize = (plan: LoadPlan): VehicleFitSuggestion | n
   let widthAtCurrentLength: number | null = null
   const maxWidth = Math.max(plan.vehicleWidth + 2000, maxCargoWidth + 1000)
   for (let width = Math.max(1000, Math.ceil(maxCargoWidth / 100) * 100); width <= maxWidth; width += 100) {
-    if (quickFit(plan.vehicleLength, width)) {
+    if (await quickFit(plan.vehicleLength, width)) {
       widthAtCurrentLength = width
       break
     }
