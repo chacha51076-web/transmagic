@@ -157,6 +157,7 @@ function PlanForm() {
       y: Math.max(0, (v.vehicleWidth * 1000 - coolerLength) / 2),
       length: coolerProjection,
       width: coolerLength,
+      height: coolerHeight,
       blocksFloor: false,
     }
     const obstacleLength = v.obstacleLength * 1000
@@ -192,9 +193,23 @@ function PlanForm() {
     const blockedZones = [...obstacles.filter(o => o.blocksFloor !== false), ...unavailable, ...gaps]
     const overlaps = (a: { x: number; y: number; length: number; width: number }, b: { x: number; y: number; length: number; width: number }) =>
       a.x < b.x + b.length && a.x + a.length > b.x && a.y < b.y + b.width && a.y + a.width > b.y
-    const canPlace = (x: number, y: number, length: number, width: number, placed: Array<{ x: number; y: number; length: number; width: number }>) => {
-      const candidate = { x, y, length, width }
+    const verticalZones = obstacles.filter(o => (o.height ?? 0) > 0)
+    const hasVerticalClearance = (candidate: { x: number; y: number; length: number; width: number; height: number }) => {
+      if (candidate.height <= 0) return true
+      if (candidate.height > v.vehicleHeight * 1000) return false
+      return !verticalZones.some(zone => {
+        const overlapsFootprint =
+          candidate.x < zone.x + zone.length &&
+          candidate.x + candidate.length > zone.x &&
+          candidate.y < zone.y + zone.width &&
+          candidate.y + candidate.width > zone.y
+        return overlapsFootprint && candidate.height > v.vehicleHeight * 1000 - (zone.height ?? 0)
+      })
+    }
+    const canPlace = (x: number, y: number, length: number, width: number, height: number, placed: Array<{ x: number; y: number; length: number; width: number }>) => {
+      const candidate = { x, y, length, width, height }
       if (x < 0 || y < 0 || x + length > v.vehicleLength * 1000 || y + width > v.vehicleWidth * 1000) return false
+      if (!hasVerticalClearance(candidate)) return false
       if (blockedZones.some(o => overlaps(candidate, o))) return false
       return !placed.some(p => overlaps(candidate, p))
     }
@@ -277,7 +292,7 @@ function PlanForm() {
           width * 2 <= v.vehicleWidth * 1000
         const orientationBonus = shortSideAlongLength ? 500000000 : 0
         for (const point of candidatePoints(length, width, placements)) {
-          if (!canPlace(point.x, point.y, length, width, placements)) continue
+          if (!canPlace(point.x, point.y, length, width, item.group.height, placements)) continue
           const score = scoreCandidate(point.x, point.y, length, width, placements, item.group.weight) + orientationBonus
           if (!best || score > best.score) best = { ...point, length, width, score }
         }
@@ -290,11 +305,11 @@ function PlanForm() {
     // зазор или другой груз. Если свободного места нет — груз остаётся
     // неразмещённым и это отражается как N / requested.
     const safePlacements = placements.filter((p, index) => {
-      const candidate = { x: p.x, y: p.y, length: p.length, width: p.width }
+      const candidate = { x: p.x, y: p.y, length: p.length, width: p.width, height: p.group.height }
       const inside = candidate.x >= 0 && candidate.y >= 0 &&
         candidate.x + candidate.length <= v.vehicleLength * 1000 &&
         candidate.y + candidate.width <= v.vehicleWidth * 1000
-      if (!inside || blockedZones.some(zone => overlaps(candidate, zone))) return false
+      if (!inside || !hasVerticalClearance(candidate) || blockedZones.some(zone => overlaps(candidate, zone))) return false
       return !placements.some((other, otherIndex) =>
         otherIndex !== index &&
         overlaps(candidate, { x: other.x, y: other.y, length: other.length, width: other.width })
@@ -583,9 +598,18 @@ function Visualizer() {
     if (!pallet) return false
     const candidate = { ...pallet, x, y }
     const blocked = [...plan.obstacles.filter(o => o.blocksFloor !== false), ...plan.unavailableZones, ...plan.gaps]
+    const verticalZones = plan.obstacles.filter(o => (o.height ?? 0) > 0)
+    const verticalClear = candidate.height <= 0 || (
+      candidate.height <= plan.vehicleHeight &&
+      !verticalZones.some(zone =>
+        candidate.height > plan.vehicleHeight - (zone.height ?? 0) &&
+        overlapsRect(candidate, zone)
+      )
+    )
     return candidate.x >= 0 && candidate.y >= 0 &&
       candidate.x + candidate.length <= plan.vehicleLength &&
       candidate.y + candidate.width <= plan.vehicleWidth &&
+      verticalClear &&
       !blocked.some(zone => overlapsRect(candidate, zone)) &&
       plan.pallets.filter(p => p.id !== id).every(other => !overlapsRect(candidate, other))
   }
@@ -673,13 +697,18 @@ function Visualizer() {
     const intersects = (a: typeof p, b: typeof p) =>
       a.x < b.x + b.length && a.x + a.length > b.x && a.y < b.y + b.width && a.y + a.width > b.y
     return p.x < 0 || p.y < 0 || p.x + p.length > plan.vehicleLength || p.y + p.width > plan.vehicleWidth ||
+      p.height > plan.vehicleHeight ||
+      plan.obstacles.some(o => (o.height ?? 0) > 0 && p.height > plan.vehicleHeight - (o.height ?? 0) &&
+        p.x < o.x + o.length && p.x + p.length > o.x && p.y < o.y + o.width && p.y + p.width > o.y) ||
       plan.obstacles.filter(o => o.blocksFloor !== false).some(o => p.x < o.x + o.length && p.x + p.length > o.x && p.y < o.y + o.width && p.y + p.width > o.y) ||
       plan.unavailableZones.some(o => p.x < o.x + o.length && p.x + p.length > o.x && p.y < o.y + o.width && p.y + p.width > o.y) ||
       plan.gaps.some(o => p.x < o.x + o.length && p.x + p.length > o.x && p.y < o.y + o.width && p.y + p.width > o.y) ||
       visualPlan.pallets.slice(i + 1).some(q => intersects(p, q))
   })
   const conflictReason = selected && conflicts.some(p => p.id === selected.id)
-    ? (selected.x + selected.length > plan.vehicleLength || selected.y + selected.width > plan.vehicleWidth ? 'Выходит за границы кузова'
+    ? (selected.x + selected.length > plan.vehicleLength || selected.y + selected.width > plan.vehicleWidth || selected.height > plan.vehicleHeight ? 'Не помещается по габаритам/высоте'
+      : plan.obstacles.some(o => (o.height ?? 0) > 0 && selected.height > plan.vehicleHeight - (o.height ?? 0) &&
+          selected.x < o.x + o.length && selected.x + selected.length > o.x && selected.y < o.y + o.width && selected.y + selected.width > o.y) ? 'Не проходит по высоте под препятствием'
       : plan.obstacles.filter(o => o.blocksFloor !== false).some(o => selected.x < o.x + o.length && selected.x + selected.length > o.x && selected.y < o.y + o.width && selected.y + selected.width > o.y) ? 'Пересекает препятствие'
       : plan.unavailableZones.some(o => selected.x < o.x + o.length && selected.x + selected.length > o.x && selected.y < o.y + o.width && selected.y + selected.width > o.y) ? 'Попадает в недоступную зону'
       : plan.gaps.some(o => selected.x < o.x + o.length && selected.x + selected.length > o.x && selected.y < o.y + o.width && selected.y + selected.width > o.y) ? 'Попадает в зону зазора'
