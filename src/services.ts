@@ -47,6 +47,7 @@ export const PlacementService = {
       .flatMap(group => Array.from({length: group.count}, () => group))
       .sort((a,b) => b.length*b.width-a.length*a.width)
 
+    const requestedCount = items.length
     const modes: PlacementVariant[] = ['BALANCED','REAR','AXLE']
     for (const mode of modes) {
       const placed: Pallet[] = []
@@ -100,13 +101,21 @@ export const PlacementService = {
                 : Math.abs(cgX - targetX)
             const transversePenalty = Math.abs(cgY - targetY)
 
-            // For a 2.45 m body and EUR pallets, prefer 0.8 m along X
-            // and 1.2 m across Y so two pallets form a balanced row.
-            const eurRowOrientation =
-              group.length === 1200 && group.width === 800 &&
-              length === 800 && width === 1200 &&
-              width * 2 <= plan.vehicleWidth
-            const orientationBonus = eurRowOrientation ? 10000000 : 0
+            // Orientation is part of the alternative plan. When there are
+            // only a few pallets, using the long side along X can be more
+            // practical because it lets 3 EUR pallets fit across a 2.45 m
+            // body. When the truck is heavily loaded, the short side along X
+            // is usually more compact. The user can compare both variants.
+            const longSideAlongX = length > width
+            const shortSideAlongX = length < width
+            const fewCargo = requestedCount <= 6
+            const preferLongX =
+              mode === 'REAR' || (mode === 'BALANCED' && fewCargo)
+            const preferShortX =
+              mode === 'AXLE' || (mode === 'BALANCED' && !fewCargo)
+            const orientationBonus =
+              (preferLongX && longSideAlongX ? 4000000 : 0) +
+              (preferShortX && shortSideAlongX ? 4000000 : 0)
 
             // Strongly prefer the second pallet to use the opposite side
             // when a candidate keeps the resulting CG near the center.
@@ -126,7 +135,7 @@ export const PlacementService = {
             const score =
               orientationBonus +
               oppositeSideBonus +
-              wall * (mode === 'REAR' ? 250000 : 200000) +
+              wall * (mode === 'REAR' ? 220000 : 180000) +
               compact * 6000 +
               sideDiversity * 1000 -
               sideImbalance * 150000 -
