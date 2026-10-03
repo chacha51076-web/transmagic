@@ -30,6 +30,9 @@ export const SpeechService = {
     await new Promise((resolve) => setTimeout(resolve, 700))
     return 'Добавить 10 европаллет по 450 килограммов'
   },
+  isSupported(): boolean {
+    return typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
+  },
 }
 
 export const SolverService = {
