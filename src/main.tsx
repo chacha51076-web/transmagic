@@ -350,7 +350,10 @@ function PlanForm() {
       cargoGroups,
       pallets,
     }
-    void setPlanVariants(PlacementService.createVariants(plan))
+    void (async () => {
+      const variants = await PlacementService.createVariants(plan)
+      await setPlanVariants(variants)
+    })()
   }
   const recognitionRef = useRef<any>(null)
   const speak = () => {
