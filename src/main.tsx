@@ -155,11 +155,17 @@ function PlanForm() {
       const targetCenter = (assumedAxlePositions[0] + assumedAxlePositions[assumedAxlePositions.length - 1]) / 2
       const existingWeight = placed.reduce((sum, p) => sum + p.group.weight, 0)
       const existingMoment = placed.reduce((sum, p) => sum + p.group.weight * (p.x + p.length / 2), 0)
+      const existingTransverseMoment = placed.reduce((sum, p) => sum + p.group.weight * (p.y + p.width / 2), 0)
       const candidateCenter = x + length / 2
+      const candidateTransverseCenter = y + width / 2
       const loadCenter = (existingMoment + weight * candidateCenter) / Math.max(1, existingWeight + weight)
+      const transverseCenter = (existingTransverseMoment + weight * candidateTransverseCenter) / Math.max(1, existingWeight + weight)
       const balancePenalty = Math.abs(loadCenter - targetCenter) * 10000
-      // Баланс по длине кузова имеет больший приоритет, чем контакт с задней стенкой.
-      return wallContact * 700000 + adjacent * 12000 - balancePenalty - y * 0.5 - x * 0.001
+      const transversePenalty = Math.abs(transverseCenter - (v.vehicleWidth * 1000) / 2) * 180
+      // Не складываем весь груз вдоль одной боковой стены. При наличии
+      // свободного места алгоритм стремится распределять массу по обеим
+      // сторонам кузова, одновременно сохраняя продольный баланс относительно осей.
+      return wallContact * 700000 + adjacent * 12000 - balancePenalty - transversePenalty - x * 0.001
     }
 
     const candidatePoints = (length: number, width: number, placed: typeof placements) => {
