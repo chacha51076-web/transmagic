@@ -365,7 +365,6 @@ export const PlacementService = {
     // максимизируем количество реально размещённых паллет, и только
     // среди вариантов с этим максимумом сравниваем качество раскладки.
     const maxPlaced = Math.max(0, ...safeVariants.map(variant => variant.pallets.length))
-    const requested = requestedCount
 
     const signature = (variant: LoadPlan) =>
       variant.pallets
