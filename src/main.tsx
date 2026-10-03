@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useForm } from 'react-hook-form'
+import { useFieldArray, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { SpeechService } from './services'
 import { useLoadPlanStore } from './store'
@@ -9,13 +9,22 @@ import './styles.css'
 
 const numberField = z.preprocess(v => typeof v === 'string' ? Number(v.replace(',', '.')) : v, z.number().finite())
 const optionalNumberField = z.preprocess(v => v === '' || v === undefined ? undefined : typeof v === 'string' ? Number(v.replace(',', '.')) : v, z.number().finite().optional())
+const cargoGroupSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  length: numberField.pipe(z.number().min(0.01)),
+  width: numberField.pipe(z.number().min(0.01)),
+  height: numberField.pipe(z.number().min(0)),
+  weight: numberField.pipe(z.number().min(1)),
+  count: z.coerce.number().int().min(1).max(100),
+  rotatable: z.boolean(),
+  stackable: z.literal(false),
+})
 const schema = z.object({
   vehicleLength: numberField.pipe(z.number().min(0.1)), vehicleWidth: numberField.pipe(z.number().min(0.1)), vehicleHeight: numberField.pipe(z.number().min(0.1)),
   payloadCapacityKg: optionalNumberField, doorWidth: numberField.pipe(z.number().min(0)), gap: numberField.pipe(z.number().min(0)),
   obstacleX: numberField.pipe(z.number().min(0)), obstacleY: numberField.pipe(z.number().min(0)), obstacleLength: numberField.pipe(z.number().min(0)), obstacleWidth: numberField.pipe(z.number().min(0)),
   unavailable: z.boolean(), unavailableX: numberField.pipe(z.number().min(0)), unavailableY: numberField.pipe(z.number().min(0)), unavailableLength: numberField.pipe(z.number().min(0)), unavailableWidth: numberField.pipe(z.number().min(0)), axleCount: z.coerce.number().int().min(0).max(8),
-  cargoLength: numberField.pipe(z.number().min(0.01)), cargoWidth: numberField.pipe(z.number().min(0.01)), cargoHeight: numberField.pipe(z.number().min(0)),
-  quantity: z.coerce.number().int().min(1).max(100), palletWeight: numberField.pipe(z.number().min(1)), rotatable: z.boolean(),
+  cargoGroups: z.array(cargoGroupSchema).min(1).max(8),
 })
 type FormValues = z.infer<typeof schema>
 const statusClass: Record<CheckStatus, string> = { CHECKED: 'status-ok', VIOLATION: 'status-bad', NOT_CHECKED: 'status-idle' }
@@ -33,19 +42,29 @@ function PlanForm() {
   const [listening, setListening] = useState(false)
   const [recognized, setRecognized] = useState('')
   const [preset, setPreset] = useState(0)
-  const { register, handleSubmit, setValue, formState: { errors } } = useForm<FormValues>({
+  const { register, handleSubmit, setValue, control, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
       vehicleLength: 6, vehicleWidth: 2.05, vehicleHeight: 2.2, payloadCapacityKg: undefined, doorWidth: 0.23, gap: 0,
       obstacleX: 5.23, obstacleY: 0.7, obstacleLength: 0.42, obstacleWidth: 0.54, unavailable: false, unavailableX: 2.5, unavailableY: 0, unavailableLength: 1.0, unavailableWidth: 2.05, axleCount: 0,
-      cargoLength: 1.2, cargoWidth: 0.8, cargoHeight: 0, quantity: 10, palletWeight: 450, rotatable: true,
+      cargoGroups: [{ name: 'EUR паллета', length: 1.2, width: 0.8, height: 0, weight: 450, count: 10, rotatable: true, stackable: false }],
     },
   })
+  const { fields, append, remove } = useFieldArray({ control, name: 'cargoGroups' })
+  const [presetByGroup, setPresetByGroup] = useState<number[]>([0])
   const submit = (v: FormValues) => {
-    const cargoGroup: CargoGroup = { id: 'cargo', name: preset === 0 ? 'EUR паллета' : 'Груз', length: v.cargoLength * 1000, width: v.cargoWidth * 1000, height: v.cargoHeight * 1000, weight: v.palletWeight, count: v.quantity, rotatable: v.rotatable, stackable: false }
-    const palletLength = v.cargoLength * 1000
-    const palletWidth = v.cargoWidth * 1000
-    const gapMm = 20
+    const cargoGroups: CargoGroup[] = v.cargoGroups.map((group, index) => ({
+      id: `cargo-${index + 1}`,
+      name: group.name,
+      length: group.length * 1000,
+      width: group.width * 1000,
+      height: group.height * 1000,
+      weight: group.weight,
+      count: group.count,
+      rotatable: group.rotatable,
+      stackable: false,
+    }))
+
     const obstacles = v.obstacleLength && v.obstacleWidth
       ? [{ x: v.obstacleX * 1000, y: v.obstacleY * 1000, length: v.obstacleLength * 1000, width: v.obstacleWidth * 1000 }]
       : []
@@ -62,14 +81,26 @@ function PlanForm() {
       if (blockedZones.some(o => overlaps(candidate, o))) return false
       return !placed.some(p => overlaps(candidate, p))
     }
-    const placements: Array<{ x: number; y: number; length: number; width: number }> = []
-    const palletPlacements: Array<{ x: number; y: number; length: number; width: number }> = []
-    const step = Math.max(20, Math.min(palletLength, palletWidth) / 4)
-    const orientations = v.rotatable && palletLength !== palletWidth
-      ? [[palletLength, palletWidth], [palletWidth, palletLength]]
-      : [[palletLength, palletWidth]]
-    for (let i = 0; i < v.quantity; i += 1) {
+
+    const items = cargoGroups.flatMap((group, groupIndex) =>
+      Array.from({ length: group.count }, (_, itemIndex) => ({
+        group,
+        groupIndex,
+        itemIndex,
+      }))
+    )
+    const placements: Array<{ x: number; y: number; length: number; width: number; group: CargoGroup }> = []
+    const stepFor = (length: number, width: number) => Math.max(20, Math.min(length, width) / 4)
+
+    for (const item of items) {
+      const palletLength = item.group.length
+      const palletWidth = item.group.width
+      const orientations = item.group.rotatable && palletLength !== palletWidth
+        ? [[palletLength, palletWidth], [palletWidth, palletLength]]
+        : [[palletLength, palletWidth]]
+      const step = stepFor(palletLength, palletWidth)
       let found: { x: number; y: number; length: number; width: number } | undefined
+
       for (const [length, width] of orientations) {
         for (let y = 0; y + width <= v.vehicleWidth * 1000 && !found; y += step) {
           for (let x = 0; x + length <= v.vehicleLength * 1000; x += step) {
@@ -81,23 +112,34 @@ function PlanForm() {
         }
         if (found) break
       }
-      if (found) {
-        placements.push(found)
-        palletPlacements.push(found)
-      }
+
+      if (found) placements.push({ ...found, group: item.group })
     }
-    const pallets = palletPlacements.map((p, i) => ({
-      id: i + 1, length: p.length, width: p.width, height: v.cargoHeight * 1000, weight: v.palletWeight,
-      x: p.x, y: p.y, rotatable: v.rotatable, stackable: false,
+
+    const pallets = placements.map((p, i) => ({
+      id: i + 1,
+      length: p.length,
+      width: p.width,
+      height: p.group.height,
+      weight: p.group.weight,
+      x: p.x,
+      y: p.y,
+      rotatable: p.group.rotatable,
+      stackable: false,
     }))
+
     const plan: LoadPlan = {
-      vehicleLength: v.vehicleLength * 1000, vehicleWidth: v.vehicleWidth * 1000, vehicleHeight: v.vehicleHeight * 1000, payloadCapacityKg: v.payloadCapacityKg,
+      vehicleLength: v.vehicleLength * 1000,
+      vehicleWidth: v.vehicleWidth * 1000,
+      vehicleHeight: v.vehicleHeight * 1000,
+      payloadCapacityKg: v.payloadCapacityKg,
       doors: [{ id: 'rear', x: 0, y: 0, length: v.doorWidth * 1000, width: v.vehicleWidth * 1000, label: 'Двери' }],
       gaps: v.gap ? [{ id: 'gap', x: v.doorWidth * 1000, y: 0, length: v.gap * 1000, width: v.vehicleWidth * 1000, label: 'Зазор' }] : [],
       obstacles: v.obstacleLength && v.obstacleWidth ? [{ id: 'obstacle', x: v.obstacleX * 1000, y: v.obstacleY * 1000, length: v.obstacleLength * 1000, width: v.obstacleWidth * 1000, label: 'Препятствие' }] : [],
       unavailableZones: v.unavailable ? [{ id: 'unavailable', x: v.unavailableX * 1000, y: v.unavailableY * 1000, length: v.unavailableLength * 1000, width: v.unavailableWidth * 1000, label: 'Недоступная зона' }] : [],
       axles: Array.from({ length: v.axleCount }, (_, i) => ({ id: `axle-${i + 1}`, position: v.vehicleLength * 1000 * (i + 1) / (v.axleCount + 1), capacityKg: 0 })),
-      cargoGroups: [cargoGroup], pallets,
+      cargoGroups,
+      pallets,
     }
     void setPlan(plan)
   }
@@ -138,9 +180,21 @@ function PlanForm() {
     recognitionRef.current = null
     setListening(false)
   }
-  const applyPreset = (i: number) => {
-    setPreset(i)
-    if (presets[i][1]) { setValue('cargoLength', presets[i][1]); setValue('cargoWidth', presets[i][2]) }
+  const applyPreset = (groupIndex: number, presetIndex: number) => {
+    setPresetByGroup(current => current.map((value, index) => index === groupIndex ? presetIndex : value))
+    if (presets[presetIndex][1]) {
+      setValue(`cargoGroups.${groupIndex}.length`, presets[presetIndex][1])
+      setValue(`cargoGroups.${groupIndex}.width`, presets[presetIndex][2])
+    }
+  }
+  const addCargoGroup = () => {
+    append({ name: `Грузовая группа ${fields.length + 1}`, length: 1.2, width: 0.8, height: 0, weight: 450, count: 1, rotatable: true, stackable: false })
+    setPresetByGroup(current => [...current, 0])
+  }
+  const removeCargoGroup = (groupIndex: number) => {
+    if (fields.length <= 1) return
+    remove(groupIndex)
+    setPresetByGroup(current => current.filter((_, index) => index !== groupIndex))
   }
   return <form onSubmit={handleSubmit(submit)} className="plan-form">
     <div className="section-label">Кузов, двери и зазоры</div>
@@ -152,10 +206,37 @@ function PlanForm() {
     <div className="field-grid four"><Field label="X, м" input={<input inputMode="decimal" {...register('unavailableX')} />} error={errors.unavailableX?.message} /><Field label="Y, м" input={<input inputMode="decimal" {...register('unavailableY')} />} error={errors.unavailableY?.message} /><Field label="Длина, м" input={<input inputMode="decimal" {...register('unavailableLength')} />} error={errors.unavailableLength?.message} /><Field label="Ширина, м" input={<input inputMode="decimal" {...register('unavailableWidth')} />} error={errors.unavailableWidth?.message} /></div>
     <div className="section-label cargo-label">Автомобиль и оси</div>
     <Field label="Количество осей" input={<input {...register('axleCount')} />} error={errors.axleCount?.message} />
-    <div className="section-label cargo-label">Грузовая группа</div>
-    <div className="preset-row">{presets.map((p, i) => <button type="button" key={p[0]} className={preset === i ? 'preset active' : 'preset'} onClick={() => applyPreset(i)}>{p[0]}</button>)}</div>
-    <div className="field-grid four"><Field label="Длина, м" input={<input inputMode="decimal" placeholder="1,2" {...register('cargoLength')} />} error={errors.cargoLength?.message} /><Field label="Ширина, м" input={<input inputMode="decimal" placeholder="0,8" {...register('cargoWidth')} />} error={errors.cargoWidth?.message} /><Field label="Высота, м" input={<input inputMode="decimal" placeholder="0" {...register('cargoHeight')} />} error={errors.cargoHeight?.message} /><Field label="Вес, кг" input={<input {...register('palletWeight')} />} error={errors.palletWeight?.message} /></div>
-    <div className="field-grid two"><Field label="Количество" input={<input {...register('quantity')} />} error={errors.quantity?.message} /><label className="check-field inline"><input type="checkbox" {...register('rotatable')} /> Можно поворачивать</label></div>
+    <div className="section-label cargo-label">Грузовые группы</div>
+    <div className="cargo-groups">
+      {fields.map((field, index) => (
+        <section className="cargo-group-card" key={field.id}>
+          <div className="cargo-group-head">
+            <strong>Группа {index + 1}</strong>
+            {fields.length > 1 && <button type="button" className="remove-group" onClick={() => removeCargoGroup(index)}>Удалить</button>}
+          </div>
+          <Field label="Название" input={<input {...register(`cargoGroups.${index}.name`)} placeholder={`Грузовая группа ${index + 1}`} />} error={errors.cargoGroups?.[index]?.name?.message} />
+          <div className="preset-row">
+            {presets.map((p, presetIndex) => (
+              <button type="button" key={p[0]} className={presetByGroup[index] === presetIndex ? 'preset active' : 'preset'} onClick={() => applyPreset(index, presetIndex)}>{p[0]}</button>
+            ))}
+          </div>
+          <div className="field-grid four">
+            <Field label="Длина, м" input={<input inputMode="decimal" placeholder="1,2" {...register(`cargoGroups.${index}.length`)} />} error={errors.cargoGroups?.[index]?.length?.message} />
+            <Field label="Ширина, м" input={<input inputMode="decimal" placeholder="0,8" {...register(`cargoGroups.${index}.width`)} />} error={errors.cargoGroups?.[index]?.width?.message} />
+            <Field label="Высота, м" input={<input inputMode="decimal" placeholder="0" {...register(`cargoGroups.${index}.height`)} />} error={errors.cargoGroups?.[index]?.height?.message} />
+            <Field label="Вес, кг" input={<input inputMode="decimal" {...register(`cargoGroups.${index}.weight`)} />} error={errors.cargoGroups?.[index]?.weight?.message} />
+          </div>
+          <div className="field-grid two">
+            <Field label="Количество" input={<input {...register(`cargoGroups.${index}.count`)} />} error={errors.cargoGroups?.[index]?.count?.message} />
+            <div className="group-options">
+              <label className="check-field inline"><input type="checkbox" {...register(`cargoGroups.${index}.rotatable`)} /> Можно поворачивать</label>
+              <label className="check-field inline muted-option"><input type="checkbox" disabled {...register(`cargoGroups.${index}.stackable`)} /> Ставить в штабель (скоро)</label>
+            </div>
+          </div>
+        </section>
+      ))}
+    </div>
+    <button type="button" className="add-group-button" onClick={addCargoGroup}>+ Добавить грузовую группу</button>
     {recognized && <div className="recognized">Распознано: <b>{recognized}</b><button type="button" onClick={() => setRecognized('')}>×</button></div>}
     <button type="submit" className="primary-button">Построить план <span>→</span></button>
     <div className="voice-actions">
