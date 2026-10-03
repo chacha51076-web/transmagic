@@ -28,18 +28,22 @@ export const AssistantService = {
 
 export type PlacementVariant = 'BALANCED' | 'REAR' | 'AXLE'
 
-const normalizeFixedEquipment = (plan: LoadPlan): LoadPlan => ({
-  ...plan,
-  obstacles: plan.obstacles.map(obstacle => obstacle.id === 'cooler'
-    ? {
-        ...obstacle,
-        x: Math.max(0, plan.vehicleLength - obstacle.length),
-        y: Math.max(0, (plan.vehicleWidth - obstacle.width) / 2),
-        height: obstacle.height ?? 290,
-        blocksFloor: false,
-      }
-    : obstacle),
-})
+const normalizeFixedEquipment = (plan: LoadPlan): LoadPlan => {
+  const cooler = {
+    id: 'cooler',
+    x: Math.max(0, plan.vehicleLength - plan.fixedCooler.projection),
+    y: Math.max(0, (plan.vehicleWidth - plan.fixedCooler.width) / 2),
+    length: plan.fixedCooler.projection,
+    width: plan.fixedCooler.width,
+    height: plan.fixedCooler.height,
+    label: 'Холодильная установка',
+    blocksFloor: false,
+  }
+  return {
+    ...plan,
+    obstacles: [cooler, ...plan.obstacles.filter(obstacle => obstacle.id !== 'cooler')],
+  }
+}
 
 export const PlacementService = {
   createVariants(plan: LoadPlan): LoadPlan[] {
