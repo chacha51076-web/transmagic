@@ -16,11 +16,11 @@ interface LoadPlanState {
   loadDemo: () => Promise<void>
   setPlan: (plan: LoadPlan) => Promise<void>
 }
-export const useLoadPlanStore = create<LoadPlanState>((set) => ({
+export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
   plan: null, variants: [], selectedVariant: 0, calculations: [], selectedPallet: null, isLoading: false, error: null,
   setSelectedPallet: (selectedPallet) => set({ selectedPallet }),
   setSelectedVariant: async (selectedVariant) => {
-    const variants = (get() as LoadPlanState).variants
+    const variants = get().variants
     const plan = variants[selectedVariant]
     if (!plan) return
     set({ isLoading: true, error: null })
