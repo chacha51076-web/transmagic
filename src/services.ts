@@ -114,6 +114,7 @@ export const PlacementService = {
       ...plan.unavailableZones,
       ...plan.gaps,
     ]
+
     const verticalZones = plan.obstacles.filter(o => (o.height ?? 0) > 0)
     const overlaps = (a: {x:number;y:number;length:number;width:number}, b: {x:number;y:number;length:number;width:number}) =>
       a.x < b.x + b.length && a.x + a.length > b.x &&
@@ -123,21 +124,19 @@ export const PlacementService = {
       if (candidate.height <= 0) return true
       if (candidate.height > plan.vehicleHeight) return false
       return !verticalZones.some(zone => {
-        const overlapsFootprint =
+        const overlap =
           candidate.x < zone.x + zone.length &&
           candidate.x + candidate.length > zone.x &&
           candidate.y < zone.y + zone.width &&
           candidate.y + candidate.width > zone.y
-        return overlapsFootprint && candidate.height > plan.vehicleHeight - (zone.height ?? 0)
+        return overlap && candidate.height > plan.vehicleHeight - (zone.height ?? 0)
       })
     }
 
-    const axlePositions = plan.axles.length >= 2
-      ? plan.axles.slice().sort((a,b) => a.position - b.position)
-      : []
-    const axleTargetX = axlePositions.length >= 2
+    const axlePositions = plan.axles.slice().sort((a, b) => a.position - b.position)
+    const targetX = axlePositions.length >= 2
       ? (axlePositions[0].position + axlePositions[axlePositions.length - 1].position) / 2
-      : plan.vehicleLength * 0.80
+      : plan.vehicleLength / 2
     const targetY = plan.vehicleWidth / 2
 
     const items = plan.cargoGroups
@@ -145,257 +144,184 @@ export const PlacementService = {
         Array.from({ length: group.count }, (_, itemIndex) => ({ group, groupIndex, itemIndex }))
       )
       .sort((a, b) => {
-        const areaDiff = b.group.length * b.group.width - a.group.length * a.group.width
-        if (areaDiff !== 0) return areaDiff
-        const weightDiff = b.group.weight - a.group.weight
-        if (weightDiff !== 0) return weightDiff
-        const heightDiff = b.group.height - a.group.height
-        if (heightDiff !== 0) return heightDiff
-        return Math.max(b.group.length, b.group.width) - Math.max(a.group.length, a.group.width)
+        const byArea = b.group.length * b.group.width - a.group.length * a.group.width
+        if (byArea !== 0) return byArea
+        const byWeight = b.group.weight - a.group.weight
+        if (byWeight !== 0) return byWeight
+        return b.group.height - a.group.height
       })
 
-    type Mode = PlacementVariant
-    const modes: Mode[] = ['BALANCED', 'REAR', 'AXLE']
+    const candidateAxisValues = (size: number, axis: 'x' | 'y', placed: Pallet[]) => {
+      const max = axis === 'x' ? plan.vehicleLength - size : plan.vehicleWidth - size
+      const values = new Set<number>([0, Math.max(0, max)])
 
-    const makeCandidatePoints = (
-      length: number,
-      width: number,
-      placed: Pallet[],
-    ) => {
-      const xs = new Set<number>([
-        0,
-        Math.max(0, plan.vehicleLength - length),
-        Math.max(0, Math.min(plan.vehicleLength - length, axleTargetX - length / 2)),
-        Math.max(0, Math.min(plan.vehicleLength - length, plan.vehicleLength / 2 - length / 2)),
-      ])
-      const ys = new Set<number>([
-        0,
-        Math.max(0, plan.vehicleWidth - width),
-        Math.max(0, Math.min(plan.vehicleWidth - width, targetY - width / 2)),
-      ])
+      // Regular 50 mm grid prevents the solver from getting trapped in
+      // sparse/isolated candidate points. For this UI-sized problem the
+      // search remains small enough for the browser.
+      const step = 50
+      for (let value = 0; value <= max; value += step) values.add(value)
+      if (max % step !== 0) values.add(max)
 
-      for (const p of [...placed, ...blocked]) {
-        xs.add(Math.max(0, Math.min(plan.vehicleLength - length, p.x)))
-        xs.add(Math.max(0, Math.min(plan.vehicleLength - length, p.x + p.length - length)))
-        ys.add(Math.max(0, Math.min(plan.vehicleWidth - width, p.y)))
-        ys.add(Math.max(0, Math.min(plan.vehicleWidth - width, p.y + p.width - width)))
+      for (const rect of [...placed, ...blocked]) {
+        const edge = axis === 'x'
+          ? [rect.x, rect.x + rect.length - size, rect.x + rect.length]
+          : [rect.y, rect.y + rect.width - size, rect.y + rect.width]
+        edge.forEach(value => values.add(Math.max(0, Math.min(max, Math.round(value / 50) * 50))))
       }
 
-      return [...ys].flatMap(y => [...xs]
-        .filter(x => x >= 0 && y >= 0 && x + length <= plan.vehicleLength && y + width <= plan.vehicleWidth)
-        .map(x => ({ x, y })))
+      return [...values].sort((a, b) => a - b)
     }
 
-    const scorePlan = (placed: Pallet[], mode: Mode) => {
-      const testPlan: LoadPlan = { ...plan, pallets: placed }
-      const load = calculateStaticLoad(testPlan)
-      const cgTarget = mode === 'REAR'
-        ? Math.min(axleTargetX, plan.vehicleLength * 0.42)
-        : axleTargetX
-      const cgDistance = Math.abs(load.cgX - cgTarget)
-      const lateralDistance = Math.abs(load.cgY - targetY)
+    const isFree = (candidate: Pallet, placed: Pallet[]) =>
+      candidate.x >= 0 &&
+      candidate.y >= 0 &&
+      candidate.x + candidate.length <= plan.vehicleLength &&
+      candidate.y + candidate.width <= plan.vehicleWidth &&
+      verticalClear(candidate) &&
+      !blocked.some(rect => overlaps(candidate, rect)) &&
+      !placed.some(rect => overlaps(candidate, rect))
 
-      let axlePenalty = 0
+    const scoreCandidate = (candidate: Pallet, placed: Pallet[], mode: PlacementVariant) => {
+      const cx = candidate.x + candidate.length / 2
+      const cy = candidate.y + candidate.width / 2
+
+      const load = calculateStaticLoad({
+        ...plan,
+        pallets: [...placed, candidate],
+      })
+
+      const target =
+        mode === 'REAR'
+          ? Math.min(targetX, plan.vehicleLength * 0.42)
+          : targetX
+
+      const cgPenalty = Math.abs(load.cgX - target)
+      const sidePenalty = Math.abs(load.cgY - targetY)
+
+      let capacityPenalty = 0
       if (load.valid && axlePositions.length >= 2) {
         load.axleLoads.forEach((value, index) => {
-          const capacity = axlePositions[index].capacityKg
-          if (capacity > 0 && value > capacity) axlePenalty += (value - capacity) * 900
+          const capacity = axlePositions[index]?.capacityKg ?? 0
+          if (capacity > 0 && value > capacity) {
+            capacityPenalty += (value - capacity) * 800
+          }
         })
       }
 
-      let adjacency = 0
-      let wallContact = 0
-      let sideImbalance = 0
-      for (const p of placed) {
-        wallContact += (p.y === 0 ? 1 : 0) + (p.y + p.width === plan.vehicleWidth ? 1 : 0)
-        sideImbalance += Math.abs((p.y + p.width / 2) - targetY) / Math.max(1, plan.vehicleWidth)
-        for (const q of placed) {
-          if (p.id >= q.id) continue
-          if ((p.x + p.length === q.x || q.x + q.length === p.x) &&
-              p.y < q.y + q.width && p.y + p.width > q.y) adjacency += 1
-          if ((p.y + p.width === q.y || q.y + q.width === p.y) &&
-              p.x < q.x + q.length && p.x + p.length > q.x) adjacency += 1
-        }
-      }
+      let contact = 0
+      if (candidate.x === 0 || candidate.x + candidate.length === plan.vehicleLength) contact += 400
+      if (candidate.y === 0 || candidate.y + candidate.width === plan.vehicleWidth) contact += 400
 
-      const orientationBias = placed.reduce((sum, p) => {
-        const longX = p.length > p.width
-        if (mode === 'REAR') return sum + (longX ? 9000 : 0)
-        if (mode === 'AXLE') return sum + (longX ? 0 : 9000)
-        return sum
+      const adjacent = [...placed, ...blocked].reduce((sum, rect) => {
+        const horizontalTouch =
+          (candidate.x + candidate.length === rect.x || candidate.x === rect.x + rect.length) &&
+          candidate.y < rect.y + rect.width &&
+          candidate.y + candidate.width > rect.y
+        const verticalTouch =
+          (candidate.y + candidate.width === rect.y || candidate.y === rect.y + rect.width) &&
+          candidate.x < rect.x + rect.length &&
+          candidate.x + candidate.length > rect.x
+        return sum + (horizontalTouch ? 1 : 0) + (verticalTouch ? 1 : 0)
       }, 0)
 
-      const compactness = placed.length > 1
-        ? placed.reduce((sum, p) => sum + Math.max(0, plan.vehicleLength - (p.x + p.length)), 0)
-        : 0
+      const centerBias = mode === 'BALANCED'
+        ? Math.abs(cx - targetX) * 0.4
+        : mode === 'AXLE'
+          ? Math.abs(cx - targetX) * 0.9
+          : cx * 0.06
+
+      const orientationBias = mode === 'REAR'
+        ? (candidate.length > candidate.width ? 500 : 0)
+        : mode === 'AXLE'
+          ? (candidate.length < candidate.width ? 500 : 0)
+          : 0
 
       return (
-        -cgDistance * (mode === 'AXLE' ? 34 : 28)
-        -lateralDistance * 100
-        -axlePenalty
-        -sideImbalance * 700
-        +adjacency * 320
-        +wallContact * 140
-        +orientationBias
-        -compactness * (mode === 'REAR' ? 0.04 : 0.012)
+        contact +
+        adjacent * 80 +
+        orientationBias -
+        cgPenalty * 0.035 -
+        sidePenalty * 0.08 -
+        capacityPenalty -
+        centerBias -
+        cy * 0.012
       )
     }
 
-    const buildGreedy = (mode: Mode) => {
+    const buildVariant = (mode: PlacementVariant) => {
       const placed: Pallet[] = []
 
       for (const item of items) {
         const orientations = item.group.rotatable && item.group.length !== item.group.width
-          ? [[item.group.length, item.group.width], [item.group.width, item.group.length]]
+          ? mode === 'REAR'
+            ? [[item.group.length, item.group.width], [item.group.width, item.group.length]]
+            : [[item.group.width, item.group.length], [item.group.length, item.group.width]]
           : [[item.group.length, item.group.width]]
 
         let best: Pallet | undefined
         let bestScore = -Infinity
 
         for (const [length, width] of orientations) {
-          for (const point of makeCandidatePoints(length, width, placed)) {
-            const candidate: Pallet = {
-              id: placed.length + 1,
-              length, width,
-              height: item.group.height,
-              weight: item.group.weight,
-              x: Math.round(point.x / 50) * 50,
-              y: Math.round(point.y / 50) * 50,
-              rotatable: item.group.rotatable,
-              stackable: false,
-            }
-            if (candidate.x < 0 || candidate.y < 0 ||
-                candidate.x + candidate.length > plan.vehicleLength ||
-                candidate.y + candidate.width > plan.vehicleWidth) continue
-            if (!verticalClear(candidate)) continue
-            if (blocked.some(z => overlaps(candidate, z))) continue
-            if (placed.some(p => overlaps(candidate, p))) continue
+          const xs = candidateAxisValues(length, 'x', placed)
+          const ys = candidateAxisValues(width, 'y', placed)
 
-            const score = scorePlan([...placed, candidate], mode)
-            if (score > bestScore) {
-              bestScore = score
-              best = candidate
+          for (const y of ys) {
+            for (const x of xs) {
+              const candidate: Pallet = {
+                id: placed.length + 1,
+                length,
+                width,
+                height: item.group.height,
+                weight: item.group.weight,
+                x,
+                y,
+                rotatable: item.group.rotatable,
+                stackable: false,
+              }
+
+              if (!isFree(candidate, placed)) continue
+
+              const score = scoreCandidate(candidate, placed, mode)
+
+              // Primary rule: choose a feasible position. Secondary rule:
+              // compact packing + sensible centre of mass. This keeps the
+              // solver from producing isolated 2/10 or 3/10 "solutions".
+              if (!best || score > bestScore) {
+                best = candidate
+                bestScore = score
+              }
             }
           }
         }
+
         if (best) placed.push(best)
       }
 
-      return placed
+      return placed.map((p, index) => ({ ...p, id: index + 1 }))
     }
 
-    const improveLayout = (initial: Pallet[], mode: Mode) => {
-      let placed = initial.map(p => ({ ...p }))
-      let currentScore = scorePlan(placed, mode)
-
-      for (let pass = 0; pass < 2; pass += 1) {
-        let improved = false
-
-        for (let i = 0; i < placed.length; i += 1) {
-          const pallet = placed[i]
-          const others = placed.filter((_, index) => index !== i)
-          const orientations = pallet.rotatable && pallet.length !== pallet.width
-            ? [[pallet.length, pallet.width], [pallet.width, pallet.length]]
-            : [[pallet.length, pallet.width]]
-
-          let bestCandidate = pallet
-          let bestScore = currentScore
-
-          for (const [length, width] of orientations) {
-            for (const point of makeCandidatePoints(length, width, others)) {
-              const candidate = {
-                ...pallet,
-                length,
-                width,
-                x: Math.round(point.x / 50) * 50,
-                y: Math.round(point.y / 50) * 50,
-              }
-              if (!verticalClear(candidate)) continue
-              if (candidate.x + candidate.length > plan.vehicleLength || candidate.y + candidate.width > plan.vehicleWidth) continue
-              if (blocked.some(z => overlaps(candidate, z))) continue
-              if (others.some(p => overlaps(candidate, p))) continue
-
-              const next = [...others, candidate].map((p, index) => ({ ...p, id: index + 1 }))
-              const nextScore = scorePlan(next, mode)
-              if (nextScore > bestScore + 1) {
-                bestCandidate = candidate
-                bestScore = nextScore
-              }
-            }
-          }
-
-          if (bestCandidate !== pallet) {
-            placed = [...others, bestCandidate].map((p, index) => ({ ...p, id: index + 1 }))
-            currentScore = bestScore
-            improved = true
-          }
-        }
-
-        if (!improved) break
-      }
-
-      return placed
-    }
-
-    const rawVariants = modes.map(mode => {
-      const greedy = buildGreedy(mode)
-      return {
+    const variants = (['BALANCED', 'REAR', 'AXLE'] as PlacementVariant[])
+      .map(mode => ({
         ...plan,
-        pallets: improveLayout(greedy, mode),
-      }
-    })
+        pallets: buildVariant(mode),
+      }))
 
-    const safeVariants = rawVariants.map(variant => ({
-      ...variant,
-      pallets: variant.pallets
-        .filter((p, index, array) =>
-          p.x >= 0 &&
-          p.y >= 0 &&
-          p.x + p.length <= variant.vehicleLength &&
-          p.y + p.width <= variant.vehicleWidth &&
-          verticalClear(p) &&
-          !blocked.some(z => overlaps(p, z)) &&
-          !array.some((q, qIndex) => qIndex !== index && overlaps(p, q))
-        )
-        .map((p, index) => ({ ...p, id: index + 1 })),
-    }))
+    // The number of placed pallets is the hard feasibility criterion.
+    // Only after maximizing that count do we compare quality of the layout.
+    const maxPlaced = Math.max(...variants.map(variant => variant.pallets.length), 0)
+    const unique = new Map<string, LoadPlan>()
 
-    // В интерфейс не отдаём заведомо слабый вариант, который размещает
-    // заметно меньше груза, чем лучший найденный вариант. Сначала
-    // максимизируем количество реально размещённых паллет, и только
-    // среди вариантов с этим максимумом сравниваем качество раскладки.
-    const maxPlaced = Math.max(0, ...safeVariants.map(variant => variant.pallets.length))
-
-    const signature = (variant: LoadPlan) =>
-      variant.pallets
+    for (const variant of variants.filter(item => item.pallets.length === maxPlaced)) {
+      const signature = variant.pallets
         .slice()
         .sort((a, b) => a.id - b.id)
         .map(p => [p.length, p.width, p.x, p.y].join(':'))
         .join('|')
 
-    const ranked = safeVariants
-      .filter(variant => variant.pallets.length === maxPlaced)
-      .sort((a, b) => {
-        const scoreA = scorePlan(a.pallets, 'BALANCED')
-        const scoreB = scorePlan(b.pallets, 'BALANCED')
-        return scoreB - scoreA
-      })
-
-    const unique: LoadPlan[] = []
-    const seen = new Set<string>()
-    for (const variant of ranked) {
-      const key = signature(variant)
-      if (seen.has(key)) continue
-      seen.add(key)
-      unique.push(variant)
+      if (!unique.has(signature)) unique.set(signature, variant)
     }
 
-    // Если полный груз в принципе помещается (requested == maxPlaced),
-    // варианты с меньшим количеством паллет вообще не показываем.
-    // Если часть груза физически не помещается, показываем только
-    // максимально заполненные безопасные варианты.
-    const preferred = unique.filter(variant => variant.pallets.length === maxPlaced)
-    return preferred.slice(0, 3)
+    return [...unique.values()].slice(0, 3)
   }
 }
 
