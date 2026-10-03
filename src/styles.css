@@ -152,3 +152,16 @@
   font: 500 54px 'DM Mono';
   letter-spacing: 4px;
 }
+.cargo-groups{display:grid;gap:12px;margin-top:10px}
+.cargo-group-card{padding:12px;border:1px solid #31525a;border-radius:10px;background:#15343c}
+.cargo-group-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;color:#dce9e9;font-size:11px;font-family:'DM Mono'}
+.remove-group{border:1px solid #536d72;border-radius:6px;background:transparent;color:#a9babc;padding:6px 8px;font-size:9px}
+.add-group-button{width:100%;margin-top:10px;padding:11px;border:1px dashed #527078;border-radius:8px;background:transparent;color:#b7ef62;font:600 10px 'DM Mono'}
+.group-options{display:grid;gap:2px}
+.muted-option{opacity:.5}
+@media(max-width:760px){
+  .cargo-group-card{padding:12px}
+  .cargo-group-head{font-size:12px}
+  .remove-group{min-height:40px;padding:8px 10px;font-size:11px}
+  .add-group-button{min-height:44px;font-size:12px}
+}
