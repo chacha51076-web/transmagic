@@ -119,18 +119,26 @@ function PlanForm() {
     // wall contact and adjacency, which helps mixed cargo fill irregular free space.
     const placements: Array<{ x: number; y: number; length: number; width: number; group: CargoGroup }> = []
     const blocked = blockedZones.map(z => ({ x: z.x, y: z.y, length: z.length, width: z.width }))
-    const scoreCandidate = (x: number, y: number, length: number, width: number, placed: typeof placements) => {
+    const scoreCandidate = (x: number, y: number, length: number, width: number, placed: typeof placements, weight: number) => {
       const right = x + length
       const bottom = y + width
-      const wallContact = (x === 0 ? 1 : 0) + (y === 0 ? 1 : 0) +
-        (right === v.vehicleLength * 1000 ? 1 : 0) + (bottom === v.vehicleWidth * 1000 ? 1 : 0)
+      // Не прижимаем груз автоматически к задним дверям: для осевой нагрузки
+      // важнее продольный баланс всей массы. Поперечную укладку по стенкам
+      // сохраняем — она уменьшает пустоты и делает план стабильнее.
+      const wallContact = (y === 0 ? 1 : 0) + (bottom === v.vehicleWidth * 1000 ? 1 : 0)
       const adjacent = [...placed, ...blocked].reduce((score, p) => {
         const verticalTouch = (right === p.x || x === p.x + p.length) && y < p.y + p.width && bottom > p.y
         const horizontalTouch = (bottom === p.y || y === p.y + p.width) && x < p.x + p.length && right > p.x
         return score + (verticalTouch ? 2 : 0) + (horizontalTouch ? 2 : 0)
       }, 0)
-      // Lower y/x keeps the plan easy to unload; adjacency reduces fragmented pockets.
-      return wallContact * 1000000 + adjacent * 1000 - y - x * 0.001
+      const targetCenter = (v.vehicleLength * 1000) / 2
+      const existingWeight = placed.reduce((sum, p) => sum + p.group.weight, 0)
+      const existingMoment = placed.reduce((sum, p) => sum + p.group.weight * (p.x + p.length / 2), 0)
+      const candidateCenter = x + length / 2
+      const loadCenter = (existingMoment + weight * candidateCenter) / Math.max(1, existingWeight + weight)
+      const balancePenalty = Math.abs(loadCenter - targetCenter) * 900
+      // Баланс по длине кузова имеет больший приоритет, чем контакт с задней стенкой.
+      return wallContact * 700000 + adjacent * 12000 - balancePenalty - y * 0.5 - x * 0.001
     }
 
     const candidatePoints = (length: number, width: number, placed: typeof placements) => {
@@ -166,7 +174,7 @@ function PlanForm() {
         const orientationBonus = shortSideAlongLength ? 500000000 : 0
         for (const point of candidatePoints(length, width, placements)) {
           if (!canPlace(point.x, point.y, length, width, placements)) continue
-          const score = scoreCandidate(point.x, point.y, length, width, placements) + orientationBonus
+          const score = scoreCandidate(point.x, point.y, length, width, placements, item.group.weight) + orientationBonus
           if (!best || score > best.score) best = { ...point, length, width, score }
         }
       }
