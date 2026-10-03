@@ -433,7 +433,7 @@ export const findMinimumVehicleSize = async (plan: LoadPlan): Promise<VehicleFit
   const maxCargoLength = Math.max(...plan.cargoGroups.map(group => Math.max(group.length, group.width)))
   const maxCargoWidth = Math.max(...plan.cargoGroups.map(group => Math.min(group.length, group.width)))
 
-  const quickFit = (vehicleLength: number, vehicleWidth: number) => {
+  const quickFit = async (vehicleLength: number, vehicleWidth: number) => {
     const candidatePlan: LoadPlan = {
       ...plan,
       vehicleLength,
