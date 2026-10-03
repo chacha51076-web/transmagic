@@ -8,9 +8,10 @@ import type { CheckStatus, CargoGroup, LoadPlan } from './types'
 import './styles.css'
 
 const numberField = z.preprocess(v => typeof v === 'string' ? Number(v.replace(',', '.')) : v, z.number().finite())
+const optionalNumberField = z.preprocess(v => v === '' || v === undefined ? undefined : typeof v === 'string' ? Number(v.replace(',', '.')) : v, z.number().finite().optional())
 const schema = z.object({
   vehicleLength: numberField.pipe(z.number().min(1000)), vehicleWidth: numberField.pipe(z.number().min(500)), vehicleHeight: numberField.pipe(z.number().min(500)),
-  payloadCapacityKg: numberField.optional(), doorWidth: numberField.pipe(z.number().min(0)), gap: numberField.pipe(z.number().min(0)),
+  payloadCapacityKg: optionalNumberField, doorWidth: numberField.pipe(z.number().min(0)), gap: numberField.pipe(z.number().min(0)),
   obstacleX: numberField.pipe(z.number().min(0)), obstacleY: numberField.pipe(z.number().min(0)), obstacleLength: numberField.pipe(z.number().min(0)), obstacleWidth: numberField.pipe(z.number().min(0)),
   unavailable: z.boolean(), axleCount: z.coerce.number().int().min(0).max(8),
   cargoLength: numberField.pipe(z.number().min(1)), cargoWidth: numberField.pipe(z.number().min(1)), cargoHeight: numberField.pipe(z.number().min(0)),
