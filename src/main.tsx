@@ -532,7 +532,7 @@ function Visualizer() {
     valid: boolean
   } | null>(null)
   const [axleDrag, setAxleDrag] = useState<{ id: string; originalX: number; x: number } | null>(null)
-  const [vehicleFitSuggestion, setVehicleFitSuggestion] = useState<ReturnType<typeof findMinimumVehicleSize> | null>(null)
+  const [vehicleFitSuggestion, setVehicleFitSuggestion] = useState<Awaited<ReturnType<typeof findMinimumVehicleSize>>>(null)
   const [weightDraft, setWeightDraft] = useState('')
   useEffect(() => {
     if (!axleDrag || !plan) return
