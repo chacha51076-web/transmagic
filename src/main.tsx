@@ -70,7 +70,7 @@ function PlanForm() {
     resolver: zodResolver(schema),
     defaultValues: {
       vehicleLength: 6, vehicleWidth: 2.05, vehicleHeight: 2.2, coolerLength: 1.23, coolerHeight: 0.29, coolerProjection: 0.68, payloadCapacityKg: undefined, doorWidth: 0.23, gap: 0,
-      hasObstacle: false, obstacleMode: 'AUTO', obstacleWeight: 0, obstacleX: 5.23, obstacleY: 0.7, obstacleLength: 0.42, obstacleWidth: 0.54, obstacleWeight: 0, unavailable: false, unavailableX: 2.5, unavailableY: 0, unavailableLength: 1.0, unavailableWidth: 2.05, axleCount: 2,
+      hasObstacle: false, obstacleMode: 'AUTO', obstacleWeight: 0, obstacleX: 5.23, obstacleY: 0.7, obstacleLength: 0.42, obstacleWidth: 0.54, unavailable: false, unavailableX: 2.5, unavailableY: 0, unavailableLength: 1.0, unavailableWidth: 2.05, axleCount: 2,
       cargoGroups: [{ name: 'EUR паллета', length: 1.2, width: 0.8, height: 0, weight: 450, count: 10, rotatable: true, stackable: false }],
     },
   })
