@@ -15,6 +15,7 @@ export const AssistantService = {
     ]
     return {
       vehicleLength: 6000, vehicleWidth: 2050, vehicleHeight: 2200,
+      fixedCooler: { width: 1290, projection: 680, height: 290 },
       payloadCapacityKg: undefined,
       doors: [{ id: 'rear', x: 0, y: 0, length: 230, width: 2050, label: 'Двери' }],
       gaps: [], obstacles: [{ id: 'cooler', x: 5320, y: 380, length: 680, width: 1290, height: 290, label: 'Холодильная установка', blocksFloor: false }],
