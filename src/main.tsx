@@ -38,7 +38,7 @@ function PlanForm() {
     defaultValues: {
       vehicleLength: 6, vehicleWidth: 2.05, vehicleHeight: 2.2, payloadCapacityKg: undefined, doorWidth: 0.23, gap: 0,
       obstacleX: 5.23, obstacleY: 0.7, obstacleLength: 0.42, obstacleWidth: 0.54, unavailable: false, axleCount: 0,
-      cargoLength: 1200, cargoWidth: 800, cargoHeight: 0, quantity: 10, palletWeight: 450, rotatable: true,
+      cargoLength: 1.2, cargoWidth: 0.8, cargoHeight: 0, quantity: 10, palletWeight: 450, rotatable: true,
     },
   })
   const submit = (v: FormValues) => {
