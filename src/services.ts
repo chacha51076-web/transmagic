@@ -7,17 +7,17 @@ const demoPallet = (id: number, x: number, y: number): Pallet => ({
 export const AssistantService = {
   async createDemo(): Promise<LoadPlan> {
     await new Promise((resolve) => setTimeout(resolve, 250))
-    const xs = [0, 1200, 2400, 3600]
     const pallets = [
-      demoPallet(1, xs[0], 0), demoPallet(2, xs[1], 0), demoPallet(3, xs[2], 0), demoPallet(4, xs[3], 0),
-      demoPallet(5, xs[0], 800), demoPallet(6, xs[1], 800), demoPallet(7, xs[2], 800), demoPallet(8, xs[3], 800),
-      demoPallet(9, 0, 1600), demoPallet(10, 1200, 1600),
+      demoPallet(1, 0, 0), demoPallet(2, 1200, 0), demoPallet(3, 2400, 0), demoPallet(4, 3600, 0),
+      { ...demoPallet(5, 4800, 0), length: 800, width: 1200 },
+      demoPallet(6, 0, 1200), demoPallet(7, 1200, 1200), demoPallet(8, 2400, 1200),
+      demoPallet(9, 3600, 1200), demoPallet(10, 4800, 1200),
     ]
     return {
       vehicleLength: 6000, vehicleWidth: 2050, vehicleHeight: 2200,
       payloadCapacityKg: undefined,
       doors: [{ id: 'rear', x: 0, y: 0, length: 230, width: 2050, label: 'Двери' }],
-      gaps: [], obstacles: [{ id: 'cooler', x: 4800, y: 0, length: 420, width: 540, label: 'Охладитель' }],
+      gaps: [], obstacles: [{ id: 'cooler', x: 5600, y: 0, length: 400, width: 540, label: 'Охладитель' }],
       unavailableZones: [], axles: [],
       cargoGroups: [{ id: 'eur', name: 'EUR паллета', length: 1200, width: 800, height: 0, weight: 450, count: 10, rotatable: true, stackable: false }],
       pallets,
