@@ -41,7 +41,6 @@ function PlanForm() {
   const setPlan = useLoadPlanStore(s => s.setPlan)
   const [listening, setListening] = useState(false)
   const [recognized, setRecognized] = useState('')
-  const [preset, setPreset] = useState(0)
   const { register, handleSubmit, setValue, control, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
