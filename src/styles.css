@@ -193,3 +193,9 @@
 .coord-label{font-size:48px;fill:#6c8186}
 .meter-scale line{stroke:#7f9599;stroke-width:6}
 .meter-scale text{font-size:46px;fill:#71878b}
+
+.coordinate-system{font-family:'DM Mono',monospace;font-weight:700;fill:#314f55}
+.coordinate-system line{stroke:#314f55;stroke-width:9}
+.coordinate-system .axis-arrow{fill:#314f55}
+.coordinate-system text{font-size:52px;letter-spacing:1px}
+.coordinate-system .orientation-label{font-size:42px;letter-spacing:2px}
