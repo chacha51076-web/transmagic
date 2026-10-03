@@ -420,7 +420,7 @@ function Visualizer() {
   const placedCount = placementParts ? Number(placementParts[1]) : plan.pallets.length
   const requestedCount = placementParts ? Number(placementParts[2]) : plan.pallets.length
   const unplacedCount = Math.max(0, requestedCount - placedCount)
-  const variantLabels = ['Сбалансированный', 'Ближе к дверям', 'По осям']
+  const variantLabels = ['Сбалансированный', 'Вдоль длинной стороны', 'По осям']
   const variantMeta = variants.map((variant, index) => {
     const cg = getLoadGeometry(variant)
     const requested = variant.cargoGroups.reduce((sum, g) => sum + g.count, 0)
