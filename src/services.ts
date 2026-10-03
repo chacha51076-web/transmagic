@@ -25,6 +25,60 @@ export const AssistantService = {
   },
 }
 
+export type PlacementVariant = 'BALANCED' | 'REAR' | 'AXLE'
+
+export const PlacementService = {
+  createVariants(plan: LoadPlan): LoadPlan[] {
+    const blocked = [...plan.obstacles, ...plan.unavailableZones, ...plan.gaps]
+    const overlaps = (a: Pallet, b: { x:number;y:number;length:number;width:number }) =>
+      a.x < b.x + b.length && a.x + a.length > b.x && a.y < b.y + b.width && a.y + a.width > b.y
+    const variants: LoadPlan[] = []
+    const axlePositions = plan.axles.length >= 2
+      ? plan.axles.slice().sort((a,b) => a.position-b.position).map(a => a.position)
+      : [plan.vehicleLength * .70, plan.vehicleLength * .90]
+    const targetX = (axlePositions[0] + axlePositions[axlePositions.length - 1]) / 2
+    const targetY = plan.vehicleWidth / 2
+    const items = plan.cargoGroups.flatMap(group => Array.from({length: group.count}, () => group)).sort((a,b) => b.length*b.width-a.length*a.width)
+    const modes: PlacementVariant[] = ['BALANCED','REAR','AXLE']
+    for (const mode of modes) {
+      const placed: Pallet[] = []
+      for (const group of items) {
+        const orientations = group.rotatable && group.length !== group.width
+          ? [[group.length,group.width],[group.width,group.length]]
+          : [[group.length,group.width]]
+        let best: Pallet | undefined
+        let bestScore = -Infinity
+        for (const [length,width] of orientations) {
+          const xs = new Set<number>([0])
+          const ys = new Set<number>([0])
+          for (const p of [...placed,...blocked]) { xs.add(p.x); xs.add(p.x+p.length); ys.add(p.y); ys.add(p.y+p.width) }
+          for (const y of ys) for (const x of xs) {
+            const candidate: Pallet = {id: placed.length+1,length,width,height:group.height,weight:group.weight,x,y,rotatable:group.rotatable,stackable:false}
+            if (x < 0 || y < 0 || x+length > plan.vehicleLength || y+width > plan.vehicleWidth) continue
+            if (blocked.some(z => overlaps(candidate,z)) || placed.some(p => overlaps(candidate,p))) continue
+            const cx=x+length/2, cy=y+width/2
+            const wall=(y===0?1:0)+(y+width===plan.vehicleWidth?1:0)
+            const compact=placed.reduce((n,p)=>n+((x+length===p.x||x===p.x+p.length)?2:0)+((y+width===p.y||y===p.y+p.width)?2:0),0)
+            const balance=Math.abs(cx-targetX)
+            const transverse=Math.abs(cy-targetY)
+            const rearBias=x
+            const axleBias=Math.abs(cx-targetX)
+            const score = mode==='REAR'
+              ? wall*900000+compact*18000-rearBias*80-transverse*120
+              : mode==='AXLE'
+                ? wall*500000+compact*10000-axleBias*22000-transverse*140
+                : wall*700000+compact*12000-balance*14000-transverse*240
+            if (score>bestScore) { bestScore=score; best=candidate }
+          }
+        }
+        if (best) placed.push(best)
+      }
+      variants.push({...plan,pallets:placed.map((p,i)=>({...p,id:i+1}))})
+    }
+    return variants
+  }
+}
+
 export const SpeechService = {
   async listen(): Promise<string> {
     await new Promise((resolve) => setTimeout(resolve, 700))
