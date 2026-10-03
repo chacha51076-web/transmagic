@@ -215,7 +215,11 @@ export const SolverService = {
     const transverseShift = Math.abs(cgY - plan.vehicleWidth / 2) / plan.vehicleWidth
     const transverseImbalance = transverseShift > 0.25
     const axleValue = axleLoadsValid
-      ? axleLoads.map((load, i) => 'Ось ' + (i + 1) + ': ' + new Intl.NumberFormat('ru-RU').format(Math.round(load)) + ' кг').join(' · ')
+      ? axleLoads.map((load, i) => {
+          const semanticNumber = axlePositions.length === 2 ? (i === axlePositions.length - 1 ? 1 : 2) : i + 1
+          const role = axlePositions.length === 2 ? (semanticNumber === 1 ? ' передняя' : ' задняя') : ''
+          return 'Ось ' + semanticNumber + role + ': ' + new Intl.NumberFormat('ru-RU').format(Math.round(load)) + ' кг'
+        }).join(' · ')
       : axlePositions.length > 2
         ? `${axlePositions.length} оси · ЦМ X ${(cgX / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} м · база ${(axlePositions[0] / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })}–${(axlePositions[axlePositions.length - 1] / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} м`
         : 'Центр массы вне базы осей'
