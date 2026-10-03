@@ -535,10 +535,10 @@ function Visualizer() {
           x = Math.max(minX, Math.min(maxX, Math.round(svgPoint.x / 50) * 50))
         }
       }
-      setAxleDrag(null)
       if (Math.abs(x - current.originalX) >= 50) {
         await moveAxlePosition(current.id, x)
       }
+      setAxleDrag(null)
     }
     window.addEventListener('pointermove', handleMove, { passive: false })
     window.addEventListener('pointerup', handleUp, { passive: false })
