@@ -594,8 +594,10 @@ function Visualizer() {
     }
 
     const timer = window.setTimeout(() => {
-      const suggestion = findMinimumVehicleSize(plan)
-      if (active) setVehicleFitSuggestion(suggestion)
+      void (async () => {
+        const suggestion = await findMinimumVehicleSize(plan)
+        if (active) setVehicleFitSuggestion(suggestion)
+      })()
     }, 40)
 
     return () => {
