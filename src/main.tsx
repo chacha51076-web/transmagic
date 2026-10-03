@@ -13,7 +13,7 @@ const schema = z.object({
   vehicleLength: numberField.pipe(z.number().min(0.1)), vehicleWidth: numberField.pipe(z.number().min(0.1)), vehicleHeight: numberField.pipe(z.number().min(0.1)),
   payloadCapacityKg: optionalNumberField, doorWidth: numberField.pipe(z.number().min(0)), gap: numberField.pipe(z.number().min(0)),
   obstacleX: numberField.pipe(z.number().min(0)), obstacleY: numberField.pipe(z.number().min(0)), obstacleLength: numberField.pipe(z.number().min(0)), obstacleWidth: numberField.pipe(z.number().min(0)),
-  unavailable: z.boolean(), axleCount: z.coerce.number().int().min(0).max(8),
+  unavailable: z.boolean(), unavailableX: numberField.pipe(z.number().min(0)), unavailableY: numberField.pipe(z.number().min(0)), unavailableLength: numberField.pipe(z.number().min(0)), unavailableWidth: numberField.pipe(z.number().min(0)), axleCount: z.coerce.number().int().min(0).max(8),
   cargoLength: numberField.pipe(z.number().min(0.01)), cargoWidth: numberField.pipe(z.number().min(0.01)), cargoHeight: numberField.pipe(z.number().min(0)),
   quantity: z.coerce.number().int().min(1).max(100), palletWeight: numberField.pipe(z.number().min(1)), rotatable: z.boolean(),
 })
@@ -37,7 +37,7 @@ function PlanForm() {
     resolver: zodResolver(schema),
     defaultValues: {
       vehicleLength: 6, vehicleWidth: 2.05, vehicleHeight: 2.2, payloadCapacityKg: undefined, doorWidth: 0.23, gap: 0,
-      obstacleX: 5.23, obstacleY: 0.7, obstacleLength: 0.42, obstacleWidth: 0.54, unavailable: false, axleCount: 0,
+      obstacleX: 5.23, obstacleY: 0.7, obstacleLength: 0.42, obstacleWidth: 0.54, unavailable: false, unavailableX: 2.5, unavailableY: 0, unavailableLength: 1.0, unavailableWidth: 2.05, axleCount: 0,
       cargoLength: 1.2, cargoWidth: 0.8, cargoHeight: 0, quantity: 10, palletWeight: 450, rotatable: true,
     },
   })
@@ -49,7 +49,9 @@ function PlanForm() {
     const obstacles = v.obstacleLength && v.obstacleWidth
       ? [{ x: v.obstacleX * 1000, y: v.obstacleY * 1000, length: v.obstacleLength * 1000, width: v.obstacleWidth * 1000 }]
       : []
-    const unavailable = v.unavailable ? [{ x: 0, y: 0, length: 0, width: 0 }] : []
+    const unavailable = v.unavailable
+      ? [{ x: v.unavailableX * 1000, y: v.unavailableY * 1000, length: v.unavailableLength * 1000, width: v.unavailableWidth * 1000 }]
+      : []
     const overlaps = (a: { x: number; y: number; length: number; width: number }, b: { x: number; y: number; length: number; width: number }) =>
       a.x < b.x + b.length && a.x + a.length > b.x && a.y < b.y + b.width && a.y + a.width > b.y
     const canPlace = (x: number, y: number, length: number, width: number, placed: Array<{ x: number; y: number; length: number; width: number }>) => {
@@ -95,7 +97,7 @@ function PlanForm() {
       doors: [{ id: 'rear', x: 0, y: 0, length: v.doorWidth * 1000, width: v.vehicleWidth * 1000, label: 'Двери' }],
       gaps: v.gap ? [{ id: 'gap', x: v.doorWidth * 1000, y: 0, length: v.gap * 1000, width: v.vehicleWidth * 1000, label: 'Зазор' }] : [],
       obstacles: v.obstacleLength && v.obstacleWidth ? [{ id: 'obstacle', x: v.obstacleX * 1000, y: v.obstacleY * 1000, length: v.obstacleLength * 1000, width: v.obstacleWidth * 1000, label: 'Препятствие' }] : [],
-      unavailableZones: v.unavailable ? [{ id: 'unavailable', x: 0, y: 0, length: 0, width: 0, label: 'Недоступная зона' }] : [],
+      unavailableZones: v.unavailable ? [{ id: 'unavailable', x: v.unavailableX * 1000, y: v.unavailableY * 1000, length: v.unavailableLength * 1000, width: v.unavailableWidth * 1000, label: 'Недоступная зона' }] : [],
       axles: Array.from({ length: v.axleCount }, (_, i) => ({ id: `axle-${i + 1}`, position: v.vehicleLength * 1000 * (i + 1) / (v.axleCount + 1), capacityKg: 0 })),
       cargoGroups: [cargoGroup], pallets,
     }
@@ -149,6 +151,7 @@ function PlanForm() {
     <div className="section-label cargo-label">Препятствия и недоступные зоны</div>
     <div className="field-grid four"><Field label="X, м" input={<input {...register('obstacleX')} />} error={errors.obstacleX?.message} /><Field label="Y, м" input={<input {...register('obstacleY')} />} error={errors.obstacleY?.message} /><Field label="Длина, м" input={<input inputMode="decimal" {...register('obstacleLength')} />} error={errors.obstacleLength?.message} /><Field label="Ширина, м" input={<input inputMode="decimal" {...register('obstacleWidth')} />} error={errors.obstacleWidth?.message} /></div>
     <label className="check-field"><input type="checkbox" {...register('unavailable')} /> Есть недоступная зона</label>
+    <div className="field-grid four"><Field label="X, м" input={<input inputMode="decimal" {...register('unavailableX')} />} error={errors.unavailableX?.message} /><Field label="Y, м" input={<input inputMode="decimal" {...register('unavailableY')} />} error={errors.unavailableY?.message} /><Field label="Длина, м" input={<input inputMode="decimal" {...register('unavailableLength')} />} error={errors.unavailableLength?.message} /><Field label="Ширина, м" input={<input inputMode="decimal" {...register('unavailableWidth')} />} error={errors.unavailableWidth?.message} /></div>
     <div className="section-label cargo-label">Автомобиль и оси</div>
     <Field label="Количество осей" input={<input {...register('axleCount')} />} error={errors.axleCount?.message} />
     <div className="section-label cargo-label">Грузовая группа</div>
