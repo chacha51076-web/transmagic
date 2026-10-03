@@ -157,7 +157,7 @@ function PlanForm() {
       const existingMoment = placed.reduce((sum, p) => sum + p.group.weight * (p.x + p.length / 2), 0)
       const candidateCenter = x + length / 2
       const loadCenter = (existingMoment + weight * candidateCenter) / Math.max(1, existingWeight + weight)
-      const balancePenalty = Math.abs(loadCenter - targetCenter) * 1800
+      const balancePenalty = Math.abs(loadCenter - targetCenter) * 10000
       // Баланс по длине кузова имеет больший приоритет, чем контакт с задней стенкой.
       return wallContact * 700000 + adjacent * 12000 - balancePenalty - y * 0.5 - x * 0.001
     }
@@ -244,7 +244,9 @@ function PlanForm() {
       // фактическая нагрузка на оси на этапе 1 всё равно не проверяется.
       axles: Array.from({ length: Math.max(2, v.axleCount) }, (_, i) => ({
         id: `axle-${i + 1}`,
-        position: v.vehicleLength * 1000 * (i + 1) / (Math.max(2, v.axleCount) + 1),
+        position: Math.max(2, v.axleCount) === 2
+          ? v.vehicleLength * 1000 * (i === 0 ? 0.70 : 0.90)
+          : v.vehicleLength * 1000 * (0.60 + 0.30 * i / Math.max(1, Math.max(2, v.axleCount) - 1)),
         capacityKg: 0,
       })),
       cargoGroups,
