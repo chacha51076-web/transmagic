@@ -43,10 +43,53 @@ function PlanForm() {
   })
   const submit = (v: FormValues) => {
     const cargoGroup: CargoGroup = { id: 'cargo', name: preset === 0 ? 'EUR паллета' : 'Груз', length: v.cargoLength * 1000, width: v.cargoWidth * 1000, height: v.cargoHeight * 1000, weight: v.palletWeight, count: v.quantity, rotatable: v.rotatable, stackable: false }
-    const pallets = Array.from({ length: v.quantity }, (_, i) => {
-      const col = i % 5, row = Math.floor(i / 5)
-      return { id: i + 1, length: v.cargoLength * 1000, width: v.cargoWidth * 1000, height: v.cargoHeight * 1000, weight: v.palletWeight, x: 300 + col * (v.cargoLength * 1000 + 20), y: 120 + row * (v.cargoWidth * 1000 + 20), rotatable: v.rotatable, stackable: false }
-    })
+    const palletLength = v.cargoLength * 1000
+    const palletWidth = v.cargoWidth * 1000
+    const gapMm = 20
+    const obstacles = v.obstacleLength && v.obstacleWidth
+      ? [{ x: v.obstacleX * 1000, y: v.obstacleY * 1000, length: v.obstacleLength * 1000, width: v.obstacleWidth * 1000 }]
+      : []
+    const unavailable = v.unavailable ? [{ x: 0, y: 0, length: 0, width: 0 }] : []
+    const overlaps = (a: { x: number; y: number; length: number; width: number }, b: { x: number; y: number; length: number; width: number }) =>
+      a.x < b.x + b.length && a.x + a.length > b.x && a.y < b.y + b.width && a.y + a.width > b.y
+    const canPlace = (x: number, y: number, length: number, width: number, placed: Array<{ x: number; y: number; length: number; width: number }>) => {
+      const candidate = { x, y, length, width }
+      if (x < 0 || y < 0 || x + length > v.vehicleLength * 1000 || y + width > v.vehicleWidth * 1000) return false
+      if (obstacles.some(o => overlaps(candidate, o)) || unavailable.some(o => overlaps(candidate, o))) return false
+      return !placed.some(p => overlaps(candidate, p))
+    }
+    const placements: Array<{ x: number; y: number; length: number; width: number }> = []
+    const palletPlacements: Array<{ x: number; y: number; length: number; width: number }> = []
+    const step = Math.max(20, Math.min(palletLength, palletWidth) / 4)
+    const orientations = v.rotatable && palletLength !== palletWidth
+      ? [[palletLength, palletWidth], [palletWidth, palletLength]]
+      : [[palletLength, palletWidth]]
+    for (let i = 0; i < v.quantity; i += 1) {
+      let found: { x: number; y: number; length: number; width: number } | undefined
+      for (const [length, width] of orientations) {
+        for (let y = 0; y + width <= v.vehicleWidth * 1000 && !found; y += step) {
+          for (let x = 0; x + length <= v.vehicleLength * 1000; x += step) {
+            if (canPlace(x, y, length, width, placements)) {
+              found = { x, y, length, width }
+              break
+            }
+          }
+        }
+        if (found) break
+      }
+      if (found) {
+        placements.push(found)
+        palletPlacements.push(found)
+      } else {
+        // Keep an explicit conflict marker if the requested quantity cannot fit.
+        const fallback = { x: 0, y: 0, length: palletLength, width: palletWidth }
+        palletPlacements.push(fallback)
+      }
+    }
+    const pallets = palletPlacements.map((p, i) => ({
+      id: i + 1, length: p.length, width: p.width, height: v.cargoHeight * 1000, weight: v.palletWeight,
+      x: p.x, y: p.y, rotatable: v.rotatable, stackable: false,
+    }))
     const plan: LoadPlan = {
       vehicleLength: v.vehicleLength * 1000, vehicleWidth: v.vehicleWidth * 1000, vehicleHeight: v.vehicleHeight * 1000, payloadCapacityKg: v.payloadCapacityKg,
       doors: [{ id: 'rear', x: 0, y: 0, length: v.doorWidth * 1000, width: v.vehicleWidth * 1000, label: 'Двери' }],
