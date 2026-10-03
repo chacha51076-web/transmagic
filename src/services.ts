@@ -319,6 +319,63 @@ export const PlacementService = {
   }
 }
 
+export interface VehicleFitSuggestion {
+  currentLength: number
+  currentWidth: number
+  lengthAtCurrentWidth: number | null
+  widthAtCurrentLength: number | null
+  note: string
+}
+
+export const findMinimumVehicleSize = (plan: LoadPlan): VehicleFitSuggestion | null => {
+  const requested = plan.cargoGroups.reduce((sum, group) => sum + group.count, 0)
+  const currentPlaced = plan.pallets.length
+  if (currentPlaced >= requested) return null
+
+  const maxCargoLength = Math.max(...plan.cargoGroups.map(group => Math.max(group.length, group.width)))
+  const maxCargoWidth = Math.max(...plan.cargoGroups.map(group => Math.min(group.length, group.width)))
+
+  const quickFit = (vehicleLength: number, vehicleWidth: number) => {
+    const candidatePlan: LoadPlan = {
+      ...plan,
+      vehicleLength,
+      vehicleWidth,
+      pallets: [],
+    }
+    const variants = PlacementService.createVariants(candidatePlan)
+    return Math.max(0, ...variants.map(variant => variant.pallets.length)) >= requested
+  }
+
+  // We give the recommendation as an engineering estimate: search in 100 mm
+  // increments, then add a clear note that the result is based on the same
+  // geometric rules as the planner.
+  let lengthAtCurrentWidth: number | null = null
+  const maxLength = Math.max(plan.vehicleLength + 5000, maxCargoLength + 1000)
+  for (let length = Math.max(1000, Math.ceil(maxCargoLength / 100) * 100); length <= maxLength; length += 100) {
+    if (quickFit(length, plan.vehicleWidth)) {
+      lengthAtCurrentWidth = length
+      break
+    }
+  }
+
+  let widthAtCurrentLength: number | null = null
+  const maxWidth = Math.max(plan.vehicleWidth + 2000, maxCargoWidth + 1000)
+  for (let width = Math.max(1000, Math.ceil(maxCargoWidth / 100) * 100); width <= maxWidth; width += 100) {
+    if (quickFit(plan.vehicleLength, width)) {
+      widthAtCurrentLength = width
+      break
+    }
+  }
+
+  return {
+    currentLength: plan.vehicleLength,
+    currentWidth: plan.vehicleWidth,
+    lengthAtCurrentWidth,
+    widthAtCurrentLength,
+    note: 'Ориентировочная минимальная геометрия. Расчёт ищет первый кузов с шагом 100 мм, в который помещается всё заданное количество груза по текущим правилам размещения.',
+  }
+}
+
 export const SpeechService = {
   async listen(): Promise<string> {
     await new Promise((resolve) => setTimeout(resolve, 700))
