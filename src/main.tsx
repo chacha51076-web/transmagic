@@ -82,10 +82,6 @@ function PlanForm() {
       if (found) {
         placements.push(found)
         palletPlacements.push(found)
-      } else {
-        // Keep an explicit conflict marker if the requested quantity cannot fit.
-        const fallback = { x: 0, y: 0, length: palletLength, width: palletWidth }
-        palletPlacements.push(fallback)
       }
     }
     const pallets = palletPlacements.map((p, i) => ({
