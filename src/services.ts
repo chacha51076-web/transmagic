@@ -27,8 +27,22 @@ export const AssistantService = {
 
 export type PlacementVariant = 'BALANCED' | 'REAR' | 'AXLE'
 
+const normalizeFixedEquipment = (plan: LoadPlan): LoadPlan => ({
+  ...plan,
+  obstacles: plan.obstacles.map(obstacle => obstacle.id === 'cooler'
+    ? {
+        ...obstacle,
+        x: Math.max(0, plan.vehicleLength - obstacle.length),
+        y: Math.max(0, (plan.vehicleWidth - obstacle.width) / 2),
+        height: obstacle.height ?? 290,
+        blocksFloor: false,
+      }
+    : obstacle),
+})
+
 export const PlacementService = {
   createVariants(plan: LoadPlan): LoadPlan[] {
+    plan = normalizeFixedEquipment(plan)
     const blocked = [...plan.obstacles.filter(o => o.blocksFloor !== false), ...plan.unavailableZones, ...plan.gaps]
     const verticalZones = plan.obstacles.filter(o => (o.height ?? 0) > 0)
     const verticalClear = (candidate: { x: number; y: number; length: number; width: number; height: number }) => {
