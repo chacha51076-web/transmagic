@@ -34,6 +34,10 @@ export const PlacementService = {
       a.x < b.x + b.length && a.x + a.length > b.x && a.y < b.y + b.width && a.y + a.width > b.y
 
     const variants: LoadPlan[] = []
+    const fixedObstacles = plan.obstacles.filter(o => (o.weight ?? 0) > 0)
+    const fixedWeight = fixedObstacles.reduce((sum, o) => sum + (o.weight ?? 0), 0)
+    const fixedMomentX = fixedObstacles.reduce((sum, o) => sum + (o.weight ?? 0) * (o.x + o.length / 2), 0)
+    const fixedMomentY = fixedObstacles.reduce((sum, o) => sum + (o.weight ?? 0) * (o.y + o.width / 2), 0)
     const axlePositions = plan.axles.length >= 2
       ? plan.axles.slice().sort((a,b) => a.position-b.position).map(a => a.position)
       : [plan.vehicleLength * .70, plan.vehicleLength * .90]
@@ -82,12 +86,12 @@ export const PlacementService = {
 
             // Score the resulting load, not just the candidate.
             // This prevents the greedy solver from putting every pallet on one side.
-            const totalWeight = placed.reduce((sum,p) => sum + p.weight, 0) + candidate.weight
+            const totalWeight = fixedWeight + placed.reduce((sum,p) => sum + p.weight, 0) + candidate.weight
             const cgX = totalWeight > 0
-              ? (placed.reduce((sum,p) => sum + p.weight * (p.x + p.length / 2), 0) + candidate.weight * cx) / totalWeight
+              ? (fixedMomentX + placed.reduce((sum,p) => sum + p.weight * (p.x + p.length / 2), 0) + candidate.weight * cx) / totalWeight
               : targetX
             const cgY = totalWeight > 0
-              ? (placed.reduce((sum,p) => sum + p.weight * (p.y + p.width / 2), 0) + candidate.weight * cy) / totalWeight
+              ? (fixedMomentY + placed.reduce((sum,p) => sum + p.weight * (p.y + p.width / 2), 0) + candidate.weight * cy) / totalWeight
               : targetY
 
             const longitudinalPenalty =
@@ -158,7 +162,8 @@ export const SpeechService = {
 export const SolverService = {
   async summarize(plan: LoadPlan): Promise<Calculation[]> {
     await new Promise((resolve) => setTimeout(resolve, 180))
-    const totalWeight = plan.pallets.reduce((sum, p) => sum + p.weight, 0)
+    const fixedWeight = plan.obstacles.reduce((sum, o) => sum + (o.weight ?? 0), 0)
+    const totalWeight = plan.pallets.reduce((sum, p) => sum + p.weight, 0) + fixedWeight
     const requestedWeight = plan.cargoGroups.reduce((sum, group) => sum + group.weight * group.count, 0)
     const occupied = plan.pallets.reduce((sum, p) => sum + p.length * p.width, 0) / 1_000_000
     const intersects = (a: Pallet, b: Pallet) =>
@@ -184,10 +189,10 @@ export const SolverService = {
       : [plan.vehicleLength * 0.70, plan.vehicleLength * 0.90]
     const cgWeight = totalWeight
     const cgX = cgWeight > 0
-      ? plan.pallets.reduce((sum, p) => sum + p.weight * (p.x + p.length / 2), 0) / cgWeight
+      ? (plan.pallets.reduce((sum, p) => sum + p.weight * (p.x + p.length / 2), 0) + plan.obstacles.reduce((sum, o) => sum + (o.weight ?? 0) * (o.x + o.length / 2), 0)) / cgWeight
       : plan.vehicleLength / 2
     const cgY = cgWeight > 0
-      ? plan.pallets.reduce((sum, p) => sum + p.weight * (p.y + p.width / 2), 0) / cgWeight
+      ? (plan.pallets.reduce((sum, p) => sum + p.weight * (p.y + p.width / 2), 0) + plan.obstacles.reduce((sum, o) => sum + (o.weight ?? 0) * (o.y + o.width / 2), 0)) / cgWeight
       : plan.vehicleWidth / 2
     const axleLoads = axlePositions.length === 2 && cgWeight > 0
       ? [
