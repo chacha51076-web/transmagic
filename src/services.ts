@@ -39,6 +39,7 @@ export const SolverService = {
   async summarize(plan: LoadPlan): Promise<Calculation[]> {
     await new Promise((resolve) => setTimeout(resolve, 180))
     const totalWeight = plan.pallets.reduce((sum, p) => sum + p.weight, 0)
+    const requestedWeight = plan.cargoGroups.reduce((sum, group) => sum + group.weight * group.count, 0)
     const occupied = plan.pallets.reduce((sum, p) => sum + p.length * p.width, 0) / 1_000_000
     const intersects = (a: Pallet, b: Pallet) =>
       a.x < b.x + b.length && a.x + a.length > b.x && a.y < b.y + b.width && a.y + a.width > b.y
@@ -46,6 +47,7 @@ export const SolverService = {
       p.x < 0 || p.y < 0 || p.x + p.length > plan.vehicleLength || p.y + p.width > plan.vehicleWidth ||
       plan.obstacles.some(o => p.x < o.x + o.length && p.x + p.length > o.x && p.y < o.y + o.width && p.y + p.width > o.y) ||
       plan.unavailableZones.some(o => p.x < o.x + o.length && p.x + p.length > o.x && p.y < o.y + o.width && p.y + p.width > o.y) ||
+      plan.gaps.some(o => p.x < o.x + o.length && p.x + p.length > o.x && p.y < o.y + o.width && p.y + p.width > o.y) ||
       plan.pallets.slice(i + 1).some(q => intersects(p, q))
     )
     const requestedCount = plan.cargoGroups.reduce((sum, group) => sum + group.count, 0)
@@ -57,10 +59,10 @@ export const SolverService = {
     const heightValue = hasHeightData ? `${(maxCargoHeight / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} м / ${(plan.vehicleHeight / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} м` : '—'
     return [
       { id: 'count', label: 'Размещение', value: `${plan.pallets.length} / ${requestedCount}`, status: placementViolation ? 'VIOLATION' : 'CHECKED', note: geometryViolation ? 'Есть выход за кузов, пересечение или недоступную зону' : unplacedCount > 0 ? `Не размещено: ${unplacedCount} шт. Недостаточно свободного места` : 'Все паллеты внутри кузова и не пересекаются' },
-      { id: 'weight', label: 'Вес груза', value: `${new Intl.NumberFormat('ru-RU').format(totalWeight)} кг`, status: 'CHECKED', note: 'Сумма введённых весов' },
+      { id: 'weight', label: 'Вес груза', value: unplacedCount > 0 ? `${new Intl.NumberFormat('ru-RU').format(totalWeight)} / ${new Intl.NumberFormat('ru-RU').format(requestedWeight)} кг` : `${new Intl.NumberFormat('ru-RU').format(totalWeight)} кг`, status: 'CHECKED', note: unplacedCount > 0 ? `Размещено ${new Intl.NumberFormat('ru-RU').format(totalWeight)} кг из ${new Intl.NumberFormat('ru-RU').format(requestedWeight)} кг` : 'Сумма введённых весов' },
       { id: 'axles', label: 'Нагрузка на оси', value: '—', status: 'NOT_CHECKED', note: 'Не проверена на этапе 1' },
       { id: 'height', label: 'Высота', value: heightValue, status: heightViolation ? 'VIOLATION' : hasHeightData ? 'CHECKED' : 'NOT_CHECKED', note: heightViolation ? 'Груз выше полезной высоты кузова' : hasHeightData ? 'Высота груза не превышает высоту кузова' : 'Нет данных для расчёта' },
-      { id: 'payload', label: 'Грузоподъёмность', value: '—', status: 'NOT_CHECKED', note: 'Не проверена на этапе 1' },
+      { id: 'payload', label: 'Грузоподъёмность', value: plan.payloadCapacityKg != null ? `${new Intl.NumberFormat('ru-RU').format(totalWeight)} / ${new Intl.NumberFormat('ru-RU').format(plan.payloadCapacityKg)} кг` : '—', status: plan.payloadCapacityKg != null ? (totalWeight > plan.payloadCapacityKg ? 'VIOLATION' : 'CHECKED') : 'NOT_CHECKED', note: plan.payloadCapacityKg != null ? (totalWeight > plan.payloadCapacityKg ? 'Размещённый груз превышает грузоподъёмность' : `Размещённый груз в пределах ${new Intl.NumberFormat('ru-RU').format(plan.payloadCapacityKg)} кг`) : 'Не указана грузоподъёмность' },
       { id: 'cg', label: 'Центр тяжести', value: '—', status: 'NOT_CHECKED', note: 'Не рассчитан на этапе 1' },
       { id: 'area', label: 'Занятая площадь', value: `${occupied.toFixed(1)} м²`, status: 'CHECKED', note: 'Площадь паллет' },
     ]
