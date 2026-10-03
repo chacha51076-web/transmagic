@@ -22,6 +22,8 @@ const cargoGroupSchema = z.object({
 const schema = z.object({
   vehicleLength: numberField.pipe(z.number().min(0.1)), vehicleWidth: numberField.pipe(z.number().min(0.1)), vehicleHeight: numberField.pipe(z.number().min(0.1)),
   payloadCapacityKg: optionalNumberField, doorWidth: numberField.pipe(z.number().min(0)), gap: numberField.pipe(z.number().min(0)),
+  hasObstacle: z.boolean(),
+  obstacleMode: z.enum(['AUTO', 'FIXED']),
   obstacleX: numberField.pipe(z.number().min(0)), obstacleY: numberField.pipe(z.number().min(0)), obstacleLength: numberField.pipe(z.number().min(0)), obstacleWidth: numberField.pipe(z.number().min(0)),
   unavailable: z.boolean(), unavailableX: numberField.pipe(z.number().min(0)), unavailableY: numberField.pipe(z.number().min(0)), unavailableLength: numberField.pipe(z.number().min(0)), unavailableWidth: numberField.pipe(z.number().min(0)), axleCount: z.coerce.number().int().min(0).max(8),
   cargoGroups: z.array(cargoGroupSchema).min(1).max(8),
@@ -41,11 +43,11 @@ function PlanForm() {
   const setPlan = useLoadPlanStore(s => s.setPlan)
   const [listening, setListening] = useState(false)
   const [recognized, setRecognized] = useState('')
-  const { register, handleSubmit, setValue, control, formState: { errors } } = useForm<FormValues>({
+  const { register, handleSubmit, setValue, watch, control, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
       vehicleLength: 6, vehicleWidth: 2.05, vehicleHeight: 2.2, payloadCapacityKg: undefined, doorWidth: 0.23, gap: 0,
-      obstacleX: 5.23, obstacleY: 0.7, obstacleLength: 0.42, obstacleWidth: 0.54, unavailable: false, unavailableX: 2.5, unavailableY: 0, unavailableLength: 1.0, unavailableWidth: 2.05, axleCount: 0,
+      hasObstacle: false, obstacleMode: 'AUTO', obstacleX: 5.23, obstacleY: 0.7, obstacleLength: 0.42, obstacleWidth: 0.54, unavailable: false, unavailableX: 2.5, unavailableY: 0, unavailableLength: 1.0, unavailableWidth: 2.05, axleCount: 0,
       cargoGroups: [{ name: 'EUR паллета', length: 1.2, width: 0.8, height: 0, weight: 450, count: 10, rotatable: true, stackable: false }],
     },
   })
@@ -65,8 +67,22 @@ function PlanForm() {
     }))
 
     const cooler = { x: Math.max(0, v.vehicleLength * 1000 - 400), y: 0, length: 400, width: 540 }
-    const customObstacles = v.obstacleLength && v.obstacleWidth
-      ? [{ x: v.obstacleX * 1000, y: v.obstacleY * 1000, length: v.obstacleLength * 1000, width: v.obstacleWidth * 1000 }]
+    const obstacleLength = v.obstacleLength * 1000
+    const obstacleWidth = v.obstacleWidth * 1000
+    const autoObstacle = {
+      x: Math.max(v.doorWidth * 1000 + v.gap * 1000, v.vehicleLength * 1000 - obstacleLength - 200),
+      y: Math.max(0, v.vehicleWidth * 1000 - obstacleWidth - 200),
+      length: obstacleLength,
+      width: obstacleWidth,
+    }
+    const customObstacle = {
+      x: v.obstacleX * 1000,
+      y: v.obstacleY * 1000,
+      length: obstacleLength,
+      width: obstacleWidth,
+    }
+    const customObstacles = v.hasObstacle && obstacleLength > 0 && obstacleWidth > 0
+      ? [v.obstacleMode === 'FIXED' ? customObstacle : autoObstacle]
       : []
     const obstacles = [cooler, ...customObstacles]
     const unavailable = v.unavailable
@@ -157,7 +173,7 @@ function PlanForm() {
       payloadCapacityKg: v.payloadCapacityKg,
       doors: [{ id: 'rear', x: 0, y: 0, length: v.doorWidth * 1000, width: v.vehicleWidth * 1000, label: 'Двери' }],
       gaps: v.gap ? [{ id: 'gap', x: v.doorWidth * 1000, y: 0, length: v.gap * 1000, width: v.vehicleWidth * 1000, label: 'Зазор' }] : [],
-      obstacles: [{ id: 'cooler', ...cooler, label: 'Холодильная установка' }, ...(v.obstacleLength && v.obstacleWidth ? [{ id: 'obstacle', x: v.obstacleX * 1000, y: v.obstacleY * 1000, length: v.obstacleLength * 1000, width: v.obstacleWidth * 1000, label: 'Препятствие' }] : [])],
+      obstacles: [{ id: 'cooler', ...cooler, label: 'Холодильная установка' }, ...customObstacles.map((o, index) => ({ id: `obstacle-${index + 1}`, ...o, label: v.obstacleMode === 'FIXED' ? 'Препятствие · фиксированное' : 'Препятствие · авто' }))],
       unavailableZones: v.unavailable ? [{ id: 'unavailable', x: v.unavailableX * 1000, y: v.unavailableY * 1000, length: v.unavailableLength * 1000, width: v.unavailableWidth * 1000, label: 'Недоступная зона' }] : [],
       axles: Array.from({ length: v.axleCount }, (_, i) => ({ id: `axle-${i + 1}`, position: v.vehicleLength * 1000 * (i + 1) / (v.axleCount + 1), capacityKg: 0 })),
       cargoGroups,
@@ -223,7 +239,11 @@ function PlanForm() {
     <div className="field-grid three"><Field label="Длина, м" input={<input inputMode="decimal" placeholder="6,0" {...register('vehicleLength')} />} error={errors.vehicleLength?.message} /><Field label="Ширина, м" input={<input inputMode="decimal" placeholder="2,05" {...register('vehicleWidth')} />} error={errors.vehicleWidth?.message} /><Field label="Высота, м" input={<input inputMode="decimal" placeholder="2,2" {...register('vehicleHeight')} />} error={errors.vehicleHeight?.message} /></div>
     <div className="field-grid three"><Field label="Двери, м" input={<input inputMode="decimal" placeholder="0,23" {...register('doorWidth')} />} error={errors.doorWidth?.message} /><Field label="Зазор, м" input={<input inputMode="decimal" placeholder="0" {...register('gap')} />} error={errors.gap?.message} /><Field label="Грузоподъёмность, кг" input={<input {...register('payloadCapacityKg')} placeholder="не указана" />} error={errors.payloadCapacityKg?.message} /></div>
     <div className="section-label cargo-label">Препятствия и недоступные зоны</div>
-    <div className="field-grid four"><Field label="X, м" input={<input {...register('obstacleX')} />} error={errors.obstacleX?.message} /><Field label="Y, м" input={<input {...register('obstacleY')} />} error={errors.obstacleY?.message} /><Field label="Длина, м" input={<input inputMode="decimal" {...register('obstacleLength')} />} error={errors.obstacleLength?.message} /><Field label="Ширина, м" input={<input inputMode="decimal" {...register('obstacleWidth')} />} error={errors.obstacleWidth?.message} /></div>
+    <label className="check-field"><input type="checkbox" {...register('hasObstacle')} /> Есть препятствие</label>
+    {watch('hasObstacle') && <>
+      <div className="field-grid two obstacle-mode-row"><Field label="Положение" input={<select {...register('obstacleMode')}><option value="AUTO">Автоматически — система выберет место</option><option value="FIXED">Фиксированно — использовать X/Y</option></select>} error={errors.obstacleMode?.message} /><Field label="Описание" input={<input value={watch('obstacleMode') === 'FIXED' ? 'Объект нельзя перемещать' : 'Объект можно перемещать'} readOnly />} /></div>
+      <div className="field-grid four"><Field label="Длина, м" input={<input inputMode="decimal" {...register('obstacleLength')} />} error={errors.obstacleLength?.message} /><Field label="Ширина, м" input={<input inputMode="decimal" {...register('obstacleWidth')} />} error={errors.obstacleWidth?.message} />{watch('obstacleMode') === 'FIXED' && <><Field label="X, м" input={<input inputMode="decimal" {...register('obstacleX')} />} error={errors.obstacleX?.message} /><Field label="Y, м" input={<input inputMode="decimal" {...register('obstacleY')} />} error={errors.obstacleY?.message} /></>}</div>
+    </>}
     <label className="check-field"><input type="checkbox" {...register('unavailable')} /> Есть недоступная зона</label>
     <div className="field-grid four"><Field label="X, м" input={<input inputMode="decimal" {...register('unavailableX')} />} error={errors.unavailableX?.message} /><Field label="Y, м" input={<input inputMode="decimal" {...register('unavailableY')} />} error={errors.unavailableY?.message} /><Field label="Длина, м" input={<input inputMode="decimal" {...register('unavailableLength')} />} error={errors.unavailableLength?.message} /><Field label="Ширина, м" input={<input inputMode="decimal" {...register('unavailableWidth')} />} error={errors.unavailableWidth?.message} /></div>
     <div className="section-label cargo-label">Автомобиль и оси</div>
