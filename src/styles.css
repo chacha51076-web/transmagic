@@ -255,3 +255,12 @@
   .map-actions { width:100%; display:grid; grid-template-columns:1fr 1fr repeat(3,44px); }
   .map-actions button { min-height:44px; font-size:10px; padding:6px; }
 }
+
+.axle-mode-grid { margin-bottom: 6px; }
+.axle-position-block { padding-top: 2px; }
+.axle-position-block .field-grid { margin-top: 8px; }
+.axle-position-block .field span { line-height: 1.25; }
+.field-hint { display:block; margin: 6px 0 10px; font-size: 11px; line-height: 1.45; opacity: .72; }
+@media (max-width: 760px) {
+  .axle-position-block .field-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
