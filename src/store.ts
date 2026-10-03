@@ -264,11 +264,29 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
     const variants = get().variants
     const plan = variants[selectedVariant] ? normalizePlanEquipment(variants[selectedVariant]) : null
     if (!plan) return
-    set({ isLoading: true, error: null })
+
+    // Переключение варианта должно быть мгновенным. Пересчёт карточек
+    // выполняем в фоне, чтобы кнопки 1/2/3 не блокировали интерфейс.
+    set({
+      plan,
+      selectedVariant,
+      selectedPallet: plan.pallets[0]?.id ?? null,
+      isLoading: false,
+      error: null,
+      history: [],
+      rotationFeedback: null,
+    })
+
     try {
       const calculations = await SolverService.summarize(plan)
-      set({ plan, calculations, selectedVariant, selectedPallet: plan.pallets[0]?.id ?? null, isLoading: false, history: [], rotationFeedback: null })
-    } catch { set({ isLoading: false, error: 'Не удалось переключить вариант' }) }
+      if (get().selectedVariant === selectedVariant) {
+        set({ calculations })
+      }
+    } catch {
+      if (get().selectedVariant === selectedVariant) {
+        set({ error: 'Не удалось пересчитать выбранный вариант' })
+      }
+    }
   },
   setPlanVariants: async (plans) => {
     const plan = plans[0] ? normalizePlanEquipment(plans[0]) : null
