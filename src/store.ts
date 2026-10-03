@@ -4,6 +4,19 @@ import type { Calculation, LoadPlan } from './types'
 
 type Rect = { x: number; y: number; length: number; width: number }
 
+const normalizePlanEquipment = (plan: LoadPlan): LoadPlan => ({
+  ...plan,
+  obstacles: plan.obstacles.map(obstacle => obstacle.id === 'cooler'
+    ? {
+        ...obstacle,
+        x: Math.max(0, plan.vehicleLength - obstacle.length),
+        y: Math.max(0, (plan.vehicleWidth - obstacle.width) / 2),
+        height: obstacle.height ?? 290,
+        blocksFloor: false,
+      }
+    : obstacle),
+})
+
 const calculateCg = (plan: LoadPlan) => {
   const weighted = [
     ...plan.pallets.map(p => ({ weight: p.weight, x: p.x + p.length / 2, y: p.y + p.width / 2 })),
@@ -101,10 +114,10 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
       set({ error: "Паллету нельзя поставить сюда: пересечение или выход за границы кузова." })
       return false
     }
-    const nextPlan = {
+    const nextPlan = normalizePlanEquipment({
       ...plan,
       pallets: plan.pallets.map(p => p.id === id ? candidate : p),
-    }
+    })
     const calculations = await SolverService.summarize(nextPlan)
     const nextVariants = variants.map((v, i) => i === selectedVariant ? nextPlan : v)
     set(state => ({
@@ -136,7 +149,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
       position: axle.id === id ? rounded : axle.position,
       source: 'FIXED' as const,
     }))
-    const nextPlan = { ...plan, axles: nextAxles }
+    const nextPlan = normalizePlanEquipment({ ...plan, axles: nextAxles })
     const nextVariants = variants.map(variant => ({
       ...variant,
       axles: variant.axles.map(axle => {
@@ -164,7 +177,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
   setSelectedPalletWeight: async (weight) => {
     const { plan, selectedPallet, variants, selectedVariant } = get()
     if (!plan || selectedPallet == null || !Number.isFinite(weight) || weight < 1) return
-    const nextPlan = { ...plan, pallets: plan.pallets.map(p => p.id === selectedPallet ? { ...p, weight } : p) }
+    const nextPlan = normalizePlanEquipment({ ...plan, pallets: plan.pallets.map(p => p.id === selectedPallet ? { ...p, weight } : p) })
     const calculations = await SolverService.summarize(nextPlan)
     const nextVariants = variants.map((v, i) => i === selectedVariant ? nextPlan : v)
     set(state => ({
@@ -180,7 +193,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
   undoLastMove: async () => {
     const { plan, history, variants, selectedVariant, selectedPallet } = get()
     if (!plan || history.length === 0) return
-    const previous = history[history.length - 1]
+    const previous = normalizePlanEquipment(history[history.length - 1])
     const calculations = await SolverService.summarize(previous)
     const nextVariants = variants.map((v, i) => i === selectedVariant ? previous : v)
     set({
@@ -207,7 +220,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
 
   setSelectedVariant: async (selectedVariant) => {
     const variants = get().variants
-    const plan = variants[selectedVariant]
+    const plan = variants[selectedVariant] ? normalizePlanEquipment(variants[selectedVariant]) : null
     if (!plan) return
     set({ isLoading: true, error: null })
     try {
@@ -216,7 +229,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
     } catch { set({ isLoading: false, error: 'Не удалось переключить вариант' }) }
   },
   setPlanVariants: async (plans) => {
-    const plan = plans[0]
+    const plan = plans[0] ? normalizePlanEquipment(plans[0]) : null
     if (!plan) return
     set({ isLoading: true, error: null, variants: plans, selectedVariant: 0 })
     try {
@@ -227,7 +240,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
   loadDemo: async () => {
     set({ isLoading: true, error: null })
     try {
-      const plan = await AssistantService.createDemo()
+      const plan = normalizePlanEquipment(await AssistantService.createDemo())
       const generatedVariants = PlacementService.createVariants(plan)
       // Демо должно показывать именно заранее рассчитанную валидную 10/10 раскладку,
       // а не сырую схему до оптимизации. Остальные варианты остаются альтернативами.
@@ -237,10 +250,11 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
     } catch { set({ isLoading: false, error: 'Не удалось построить демо-план' }) }
   },
   setPlan: async (plan) => {
+    const normalizedPlan = normalizePlanEquipment(plan)
     set({ isLoading: true, error: null })
     try {
-      const calculations = await SolverService.summarize(plan)
-      set({ plan, calculations, isLoading: false, selectedPallet: plan.pallets[0]?.id ?? null, history: [], rotationFeedback: null })
+      const calculations = await SolverService.summarize(normalizedPlan)
+      set({ plan: normalizedPlan, calculations, isLoading: false, selectedPallet: normalizedPlan.pallets[0]?.id ?? null, history: [], rotationFeedback: null })
     } catch { set({ isLoading: false, error: 'Не удалось построить план' }) }
   },
 }))
