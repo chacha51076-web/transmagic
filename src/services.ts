@@ -55,15 +55,45 @@ export const SolverService = {
     const placementViolation = geometryViolation || unplacedCount > 0
     const maxCargoHeight = plan.pallets.reduce((max, p) => Math.max(max, p.height), 0)
     const hasHeightData = plan.vehicleHeight > 0 && maxCargoHeight > 0
+
+    // Расчётный центр тяжести и распределение веса по минимальной
+    // двухосной модели. Если пользователь не ввёл оси, используем
+    // условные позиции 70% и 90% длины кузова.
+    const axlePositions = plan.axles.length >= 2
+      ? plan.axles.map(a => a.position).sort((a, b) => a - b)
+      : [plan.vehicleLength * 0.70, plan.vehicleLength * 0.90]
+    const cgWeight = totalWeight
+    const cgX = cgWeight > 0
+      ? plan.pallets.reduce((sum, p) => sum + p.weight * (p.x + p.length / 2), 0) / cgWeight
+      : plan.vehicleLength / 2
+    const cgY = cgWeight > 0
+      ? plan.pallets.reduce((sum, p) => sum + p.weight * (p.y + p.width / 2), 0) / cgWeight
+      : plan.vehicleWidth / 2
+    const axleLoads = axlePositions.length === 2 && cgWeight > 0
+      ? [
+          cgWeight * (axlePositions[1] - cgX) / (axlePositions[1] - axlePositions[0]),
+          cgWeight * (cgX - axlePositions[0]) / (axlePositions[1] - axlePositions[0]),
+        ]
+      : []
+    const axleLoadsValid = axleLoads.length === 2 && axleLoads.every(load => Number.isFinite(load) && load >= 0)
+    const axleValue = axleLoadsValid
+      ? axleLoads.map((load, i) => 'Ось ' + (i + 1) + ': ' + new Intl.NumberFormat('ru-RU').format(Math.round(load)) + ' кг').join(' · ')
+      : 'Недостаточно данных для распределения по осям'
+    const axleCapacitiesKnown = plan.axles.length >= 2 && plan.axles.every(a => a.capacityKg > 0)
+    const sortedAxles = plan.axles.slice().sort((a, b) => a.position - b.position)
+    const axleCapacityViolation = axleCapacitiesKnown && axleLoadsValid && axleLoads.some((load, i) => load > sortedAxles[i].capacityKg)
+    const cgValue = cgWeight > 0
+      ? 'X ' + (cgX / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' м · Y ' + (cgY / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' м'
+      : '—'
     const heightViolation = hasHeightData && maxCargoHeight > plan.vehicleHeight
     const heightValue = hasHeightData ? `${(maxCargoHeight / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} м / ${(plan.vehicleHeight / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} м` : '—'
     return [
       { id: 'count', label: 'Размещение', value: `${plan.pallets.length} / ${requestedCount}`, status: placementViolation ? 'VIOLATION' : 'CHECKED', note: geometryViolation ? 'Есть выход за кузов, пересечение или недоступную зону' : unplacedCount > 0 ? `Не размещено: ${unplacedCount} шт. Недостаточно свободного места` : 'Все паллеты внутри кузова и не пересекаются' },
       { id: 'weight', label: 'Вес груза', value: unplacedCount > 0 ? `${new Intl.NumberFormat('ru-RU').format(totalWeight)} / ${new Intl.NumberFormat('ru-RU').format(requestedWeight)} кг` : `${new Intl.NumberFormat('ru-RU').format(totalWeight)} кг`, status: 'CHECKED', note: unplacedCount > 0 ? `Размещено ${new Intl.NumberFormat('ru-RU').format(totalWeight)} кг из ${new Intl.NumberFormat('ru-RU').format(requestedWeight)} кг` : 'Сумма введённых весов' },
-      { id: 'axles', label: 'Нагрузка на оси', value: '—', status: 'NOT_CHECKED', note: 'Не проверена на этапе 1' },
+      { id: 'axles', label: 'Нагрузка на оси', value: axleValue, status: axleCapacityViolation ? 'VIOLATION' : axleLoadsValid ? 'CALCULATED' : 'NOT_CHECKED', note: axleCapacityViolation ? 'Расчётная нагрузка превышает введённую грузоподъёмность оси' : axleLoadsValid ? (axleCapacitiesKnown ? 'Расчётная нагрузка по указанным осям' : 'Расчёт по минимальной 2-осной модели; допустимая нагрузка осей не указана') : 'Недостаточно данных для расчёта' },
       { id: 'height', label: 'Высота', value: heightValue, status: heightViolation ? 'VIOLATION' : hasHeightData ? 'CHECKED' : 'NOT_CHECKED', note: heightViolation ? 'Груз выше полезной высоты кузова' : hasHeightData ? 'Высота груза не превышает высоту кузова' : 'Нет данных для расчёта' },
       { id: 'payload', label: 'Грузоподъёмность', value: plan.payloadCapacityKg != null ? `${new Intl.NumberFormat('ru-RU').format(totalWeight)} / ${new Intl.NumberFormat('ru-RU').format(plan.payloadCapacityKg)} кг` : '—', status: plan.payloadCapacityKg != null ? (totalWeight > plan.payloadCapacityKg ? 'VIOLATION' : 'CHECKED') : 'NOT_CHECKED', note: plan.payloadCapacityKg != null ? (totalWeight > plan.payloadCapacityKg ? 'Размещённый груз превышает грузоподъёмность' : `Размещённый груз в пределах ${new Intl.NumberFormat('ru-RU').format(plan.payloadCapacityKg)} кг`) : 'Не указана грузоподъёмность' },
-      { id: 'cg', label: 'Центр тяжести', value: '—', status: 'NOT_CHECKED', note: 'Не рассчитан на этапе 1' },
+      { id: 'cg', label: 'Центр тяжести', value: cgValue, status: cgWeight > 0 ? 'CALCULATED' : 'NOT_CHECKED', note: cgWeight > 0 ? 'Расчётный центр массы размещённого груза' : 'Нет размещённого груза' },
       { id: 'area', label: 'Занятая площадь', value: `${occupied.toFixed(1)} м²`, status: 'CHECKED', note: 'Площадь паллет' },
     ]
   },
