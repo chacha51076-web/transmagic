@@ -83,7 +83,11 @@ function PlanForm() {
 
     const items = cargoGroups.flatMap((group, groupIndex) =>
       Array.from({ length: group.count }, (_, itemIndex) => ({ group, groupIndex, itemIndex }))
-    )
+    ).sort((a, b) => {
+      const areaDiff = b.group.length * b.group.width - a.group.length * a.group.width
+      if (areaDiff !== 0) return areaDiff
+      return Math.max(b.group.length, b.group.width) - Math.max(a.group.length, a.group.width)
+    })
     // Bottom-left / best-fit packing: generate meaningful corner candidates instead of
     // scanning the whole body on a coarse grid. Candidates are scored by compactness,
     // wall contact and adjacency, which helps mixed cargo fill irregular free space.
