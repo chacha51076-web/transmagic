@@ -387,7 +387,7 @@ function PlanForm() {
         <div className="axle-current-mode"><span>Режим</span><b>{watch('axleMode') === 'FIXED' ? 'Ручной ввод' : 'Автоматическая модель'}</b></div>
       </div>
       {watch('axleMode') === 'FIXED' && <div className="axle-position-block">
-        <small className="field-hint">Укажите расстояние от задней стенки кузова до центра каждой оси. Ось №1 — передняя, затем оси идут к задней части кузова. Поэтому значения здесь идут по убыванию.</small>
+        <small className="field-hint">Укажите расстояние от задней стенки кузова до центра каждой оси. В нашей схеме Ось 1 — передняя (рулевая), Ось 2 — задняя (ведущая). Поэтому координата Оси 1 больше координаты Оси 2.</small>
         <div className="field-grid four">
           {Array.from({ length: Math.max(2, Number(watch('axleCount')) || 2) }, (_, index) =>
             <Field key={index} label={`Ось ${index + 1} · ${index === 0 ? 'передняя' : index === 1 && Math.max(2, Number(watch('axleCount')) || 2) === 2 ? 'задняя' : 'следующая'}, м от задней стенки`} input={<input inputMode="decimal" {...register(`axlePositions.${index}` as const)} />} error={errors.axlePositions?.[index]?.message} />
@@ -652,7 +652,7 @@ function Visualizer() {
       const axle = sortedAxles[i]
       const axleNumber = loadGeometry.axlePositions.length - i
       const axleRole = loadGeometry.axlePositions.length === 2
-        ? (axleNumber === 1 ? 'передняя' : 'задняя')
+        ? (axleNumber === 1 ? 'передняя / рулевая' : 'задняя / ведущая')
         : ''
       const isDraggable = plan.axles.length >= 2
       const isDragging = axleDrag?.id === axle.id
@@ -668,7 +668,8 @@ function Visualizer() {
         <line x1={x} y1={0} x2={x} y2={plan.vehicleWidth} className="axle-line" />
         <circle cx={x} cy={plan.vehicleWidth + 42} r={34} className="axle-drag-handle" />
         <rect x={x - 150} y={plan.vehicleWidth + 82} width="300" height="58" rx="12" className="axle-label-bg" />
-        <text x={x} y={plan.vehicleWidth + 119} textAnchor="middle" className="axle-label">Ось {axleNumber}{axleRole ? ` · ${axleRole}` : ''}</text>
+        <text x={x} y={plan.vehicleWidth + 119} textAnchor="middle" className="axle-label">Ось {axleNumber}</text>
+        {axleRole && <text x={x} y={plan.vehicleWidth + 151} textAnchor="middle" className="axle-role-label">{axleRole}</text>}
       </g>
     })}
     {plan.pallets.length > 0 && <g>
