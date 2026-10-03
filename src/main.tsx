@@ -646,7 +646,7 @@ function Visualizer() {
   className={`pallet-group ${drag?.id === p.id ? 'pallet-dragging' : ''}`}
 ><rect x={p.x} y={p.y} width={p.length} height={p.width} rx="18" className={`pallet ${selectedPallet === p.id ? 'selected' : ''} ${conflicts.some(c => c.id === p.id) ? 'pallet-conflict' : ''} ${drag?.id === p.id ? (drag.valid ? 'drag-valid' : 'drag-invalid') : ''}`} /><text x={p.x + p.length / 2} y={p.y + p.width / 2 - 12} textAnchor="middle" className="pallet-number">{p.id}</text><text x={p.x + p.length / 2} y={p.y + p.width / 2 + 62} textAnchor="middle" className="pallet-size">X {((p.length) / 1000).toLocaleString('ru-RU')} м · Y {((p.width) / 1000).toLocaleString('ru-RU')} м</text>{selectedPallet === p.id && <><g className="pallet-rotate-control" onPointerDown={e => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); void rotateSelectedPallet() }} pointerEvents={p.rotatable && p.length !== p.width ? 'all' : 'none'}><circle cx={p.x + p.length / 2} cy={p.y - 125} r="52" /><text x={p.x + p.length / 2} y={p.y - 107} textAnchor="middle">↻</text></g><DimLine x1={p.x} y1={p.y - 70} x2={p.x + p.length} y2={p.y - 70} label={`${(p.length / 1000).toLocaleString('ru-RU')} м`} offset={-18} /><DimLine x1={p.x - 70} y1={p.y} x2={p.x - 70} y2={p.y + p.width} label={`${(p.width / 1000).toLocaleString('ru-RU')} м`} offset={-18} /><text x={p.x + p.length / 2} y={p.y + p.width + 115} textAnchor="middle" className="coord-label">X {(p.x / 1000).toLocaleString('ru-RU')} м · Y {(p.y / 1000).toLocaleString('ru-RU')} м</text></>}</g>)}{(() => {
   const loadGeometry = getLoadGeometry(visualPlan)
-  return <g className="load-axles" pointerEvents="none">
+  return <g className="load-axles">
     {loadGeometry.axlePositions.map((x, i) => {
       const sortedAxles = plan.axles.slice().sort((a, b) => a.position - b.position)
       const axle = sortedAxles[i]
@@ -666,7 +666,9 @@ function Visualizer() {
         onPointerCancel={() => setAxleDrag(null)}
       >
         <line x1={x} y1={0} x2={x} y2={plan.vehicleWidth} className="axle-line" />
-        <circle cx={x} cy={plan.vehicleWidth + 42} r={34} className="axle-drag-handle" />
+        <line x1={x} y1={0} x2={x} y2={plan.vehicleWidth} className="axle-hit-area" pointerEvents="stroke" />
+        <circle cx={x} cy={plan.vehicleWidth + 42} r={46} className="axle-drag-handle" />
+        <text x={x} y={plan.vehicleWidth + 16} textAnchor="middle" className="axle-drag-hint">↔</text>
         <rect x={x - 150} y={plan.vehicleWidth + 82} width="300" height="58" rx="12" className="axle-label-bg" />
         <text x={x} y={plan.vehicleWidth + 119} textAnchor="middle" className="axle-label">Ось {axleNumber}</text>
         {axleRole && <text x={x} y={plan.vehicleWidth + 151} textAnchor="middle" className="axle-role-label">{axleRole}</text>}
