@@ -224,12 +224,23 @@ export const PlacementService = {
           const ys = shelfLevels(placed)
           if (reverseRows) ys.reverse()
 
+          // Prefer a shelf whose pallet center is closest to the vehicle
+          // centerline. This prevents small loads from being packed against
+          // one side when there is ample free width.
+          const targetY = Math.max(0, (plan.vehicleWidth - width) / 2)
+          ys.sort((a, b) => {
+            const da = Math.abs(a - targetY)
+            const db = Math.abs(b - targetY)
+            if (da !== db) return da - db
+            return a - b
+          })
+
           for (const y of ys) {
             if (y + width > plan.vehicleWidth) continue
 
             // Search from the rear doors forward. At each shelf we choose
             // the leftmost feasible placement; this maximizes the number
-            // of pallets before any balance optimization.
+            // of pallets before any longitudinal balance optimization.
             for (let x = 0; x + length <= plan.vehicleLength; x += 50) {
               const candidate = makeCandidate(item, length, width, x, y, placed)
               if (!candidate) continue
@@ -268,7 +279,18 @@ export const PlacementService = {
 
           for (const x of xs) {
             if (x + length > plan.vehicleLength) continue
-            for (let y = 0; y + width <= plan.vehicleWidth; y += 50) {
+
+            const targetY = Math.max(0, (plan.vehicleWidth - width) / 2)
+            const ys = []
+            for (let y = 0; y + width <= plan.vehicleWidth; y += 50) ys.push(y)
+            ys.sort((a, b) => {
+              const da = Math.abs(a - targetY)
+              const db = Math.abs(b - targetY)
+              if (da !== db) return da - db
+              return a - b
+            })
+
+            for (const y of ys) {
               const candidate = makeCandidate(item, length, width, x, y, placed)
               if (!candidate) continue
               const metric = x * 100000 + y
