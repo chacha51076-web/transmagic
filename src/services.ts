@@ -8,8 +8,8 @@ export const AssistantService = {
   async createDemo(): Promise<LoadPlan> {
     await new Promise((resolve) => setTimeout(resolve, 250))
     const pallets = [
-      demoPallet(1, 0, 0), demoPallet(2, 1200, 0), demoPallet(3, 2400, 0), demoPallet(4, 3600, 0),
-      { ...demoPallet(5, 4800, 0), length: 800, width: 1200 },
+      demoPallet(1, 400, 0), demoPallet(2, 1600, 0), demoPallet(3, 2800, 0), demoPallet(4, 4000, 0),
+      { ...demoPallet(5, 5200, 0), length: 800, width: 1200 },
       demoPallet(6, 0, 1200), demoPallet(7, 1200, 1200), demoPallet(8, 2400, 1200),
       demoPallet(9, 3600, 1200), demoPallet(10, 4800, 1200),
     ]
