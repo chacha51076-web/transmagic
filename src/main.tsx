@@ -124,7 +124,14 @@ function PlanForm() {
     recognitionRef.current = recognition
     setRecognized('')
     setListening(true)
-    recognition.start()
+    try {
+      recognition.start()
+    } catch (error: any) {
+      setListening(false)
+      setRecognized(error?.name === 'NotAllowedError' || error?.name === 'SecurityError'
+        ? 'Браузер не разрешил микрофон. Откройте приложение в Chrome/Edge и разрешите микрофон для localhost.'
+        : 'Не удалось запустить микрофон. Попробуйте ещё раз.')
+    }
   }
   const cancelSpeech = () => {
     recognitionRef.current?.abort()
