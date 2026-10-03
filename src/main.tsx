@@ -258,7 +258,7 @@ function PlanForm() {
       cargoGroups,
       pallets,
     }
-    void setPlanVariants([plan, ...PlacementService.createVariants(plan)])
+    void setPlanVariants(PlacementService.createVariants(plan))
   }
   const recognitionRef = useRef<any>(null)
   const speak = () => {
