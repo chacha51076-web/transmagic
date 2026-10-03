@@ -224,58 +224,27 @@ export const PlacementService = {
       }
     }
 
-    const rowFill = (
+    const fillRow = (
       item: Item,
       length: number,
       width: number,
       y: number,
       placed: Pallet[],
     ) => {
-      const row: Pallet[] = []
-      const rowCandidates = new Set<number>([
-        0,
-        plan.vehicleLength - length,
-        (plan.vehicleLength - length) / 2,
-      ])
-      for (const other of placed) {
-        if (other.y < y + width && other.y + other.width > y) {
-          rowCandidates.add(other.x + other.length)
-          rowCandidates.add(other.x - length)
-          rowCandidates.add(other.x)
-        }
-      }
-      for (const zone of blocked) {
-        if (zone.y < y + width && zone.y + zone.width > y) {
-          rowCandidates.add(zone.x + zone.length)
-          rowCandidates.add(zone.x - length)
-        }
+      const result: Pallet[] = []
+      const rowPlaced = placed.slice()
+      const maxScan = Math.max(0, Math.floor(plan.vehicleLength / step))
+
+      for (let xi = 0; xi <= maxScan; xi += 1) {
+        const x = xi * step
+        const candidate = makeCandidate(item, length, width, x, y, rowPlaced)
+        if (!candidate) continue
+        candidate.id = rowPlaced.length + 1
+        rowPlaced.push(candidate)
+        result.push(candidate)
       }
 
-      const working = placed.slice()
-      while (true) {
-        const positions = [...rowCandidates]
-          .map(snap)
-          .filter(x => x >= 0 && x + length <= plan.vehicleLength)
-        const candidates = positions
-          .map(x => makeCandidate(item, length, width, x, y, working))
-          .filter((p): p is Pallet => Boolean(p))
-
-        if (candidates.length === 0) break
-
-        candidates.sort((a, b) => {
-          const aRear = a.x
-          const bRear = b.x
-          if (aRear !== bRear) return aRear - bRear
-          return Math.abs((a.y + a.width / 2) - plan.vehicleWidth / 2) -
-            Math.abs((b.y + b.width / 2) - plan.vehicleWidth / 2)
-        })
-
-        const best = candidates[0]
-        row.push(best)
-        working.push(best)
-        rowCandidates.add(best.x + best.length)
-      }
-      return row
+      return result
     }
 
     const homogeneous = items.every(item =>
@@ -325,12 +294,8 @@ export const PlacementService = {
             for (const [length, width] of pattern) {
               const remaining = items.length - itemIndex
               const item = items[Math.min(itemIndex, items.length - 1)]
-              const count = Math.min(remaining, Math.floor(plan.vehicleLength / length) + 1)
-
-              for (let n = 0; n < count && itemIndex < items.length; n += 1) {
-                const candidates = rowFill(item, length, width, cursorY, placed)
-                const next = candidates.find(candidate => !placed.some(other => other.id === candidate.id)) 
-                if (!next) break
+              const rowCandidates = fillRow(item, length, width, cursorY, placed)
+              for (const next of rowCandidates.slice(0, remaining)) {
                 placed.push({ ...next, id: placed.length + 1 })
                 itemIndex += 1
               }
