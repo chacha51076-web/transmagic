@@ -151,8 +151,9 @@ function PlanForm() {
     }))
 
     const coolerLength = v.coolerLength * 1000
+    const coolerHeight = v.coolerHeight * 1000
     const coolerProjection = v.coolerProjection * 1000
-    const cooler = {
+    const cooler: { x: number; y: number; length: number; width: number; height: number; blocksFloor: boolean; weight?: number } = {
       x: Math.max(0, v.vehicleLength * 1000 - coolerProjection),
       y: Math.max(0, (v.vehicleWidth * 1000 - coolerLength) / 2),
       length: coolerProjection,
@@ -182,10 +183,10 @@ function PlanForm() {
       width: obstacleWidth,
       weight: v.obstacleWeight ?? 0,
     }
-    const customObstacles = v.hasObstacle && obstacleLength > 0 && obstacleWidth > 0
+    const customObstacles: Array<{ x: number; y: number; length: number; width: number; weight?: number; height?: number; blocksFloor?: boolean }> = v.hasObstacle && obstacleLength > 0 && obstacleWidth > 0
       ? [v.obstacleMode === 'FIXED' ? customObstacle : autoObstacle]
       : []
-    const obstacles = [cooler, ...customObstacles]
+    const obstacles: Array<{ x: number; y: number; length: number; width: number; weight?: number; height?: number; blocksFloor?: boolean }> = [cooler, ...customObstacles]
     const unavailable = v.unavailable
       ? [{ x: v.unavailableX * 1000, y: v.unavailableY * 1000, length: v.unavailableLength * 1000, width: v.unavailableWidth * 1000 }]
       : []
