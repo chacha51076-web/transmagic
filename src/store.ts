@@ -42,7 +42,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
     set({ isLoading: true, error: null })
     try {
       const plan = await AssistantService.createDemo()
-      const variants = [plan, ...PlacementService.createVariants(plan)]
+      const variants = PlacementService.createVariants(plan)
       const calculations = await SolverService.summarize(plan)
       set({ plan, variants, selectedVariant: 0, calculations, isLoading: false, selectedPallet: 1 })
     } catch { set({ isLoading: false, error: 'Не удалось построить демо-план' }) }
