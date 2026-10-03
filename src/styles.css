@@ -208,3 +208,13 @@
 
 .status-calculated{color:#8a5a00;background:#fff4d6;border-color:#e7c66b}
 .dot.status-calculated{background:#d99a16}
+
+.load-axles{font-family:inherit}
+.axle-line{stroke:#b35a24;stroke-width:14;stroke-dasharray:34 24;opacity:.9}
+.axle-label-bg{fill:#fff4e8;stroke:#b35a24;stroke-width:6}
+.axle-label{fill:#8b4218;font-size:34px;font-weight:800}
+.cg-marker{fill:#fff;stroke:#b35a24;stroke-width:14}
+.cg-cross{stroke:#b35a24;stroke-width:9}
+.cg-label-bg{fill:#fff4e8;stroke:#b35a24;stroke-width:6}
+.cg-label{fill:#8b4218;font-size:32px;font-weight:800}
+.load-model-note{fill:#8b4218;font-size:34px;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:10}
