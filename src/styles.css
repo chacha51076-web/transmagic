@@ -186,3 +186,10 @@
   .map-toolbar{font-size:11px}
   .map-toolbar button{min-width:44px;min-height:44px;font-size:11px}
 }
+
+.truck-grid-major{opacity:.55;pointer-events:none}
+.dim-line line{stroke:#5e7479;stroke-width:7;stroke-dasharray:22 14}
+.dim-line text,.coord-label,.meter-scale text{font-family:'DM Mono',monospace;font-size:58px;fill:#496268;font-weight:600}
+.coord-label{font-size:48px;fill:#6c8186}
+.meter-scale line{stroke:#7f9599;stroke-width:6}
+.meter-scale text{font-size:46px;fill:#71878b}
