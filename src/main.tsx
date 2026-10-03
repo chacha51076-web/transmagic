@@ -82,37 +82,54 @@ function PlanForm() {
     }
 
     const items = cargoGroups.flatMap((group, groupIndex) =>
-      Array.from({ length: group.count }, (_, itemIndex) => ({
-        group,
-        groupIndex,
-        itemIndex,
-      }))
+      Array.from({ length: group.count }, (_, itemIndex) => ({ group, groupIndex, itemIndex }))
     )
+    // Bottom-left / best-fit packing: generate meaningful corner candidates instead of
+    // scanning the whole body on a coarse grid. Candidates are scored by compactness,
+    // wall contact and adjacency, which helps mixed cargo fill irregular free space.
     const placements: Array<{ x: number; y: number; length: number; width: number; group: CargoGroup }> = []
-    const stepFor = (length: number, width: number) => Math.max(20, Math.min(length, width) / 4)
+    const blocked = blockedZones.map(z => ({ x: z.x, y: z.y, length: z.length, width: z.width }))
+    const scoreCandidate = (x: number, y: number, length: number, width: number, placed: typeof placements) => {
+      const right = x + length
+      const bottom = y + width
+      const wallContact = (x === 0 ? 1 : 0) + (y === 0 ? 1 : 0) +
+        (right === v.vehicleLength * 1000 ? 1 : 0) + (bottom === v.vehicleWidth * 1000 ? 1 : 0)
+      const adjacent = [...placed, ...blocked].reduce((score, p) => {
+        const verticalTouch = (right === p.x || x === p.x + p.length) && y < p.y + p.width && bottom > p.y
+        const horizontalTouch = (bottom === p.y || y === p.y + p.width) && x < p.x + p.length && right > p.x
+        return score + (verticalTouch ? 2 : 0) + (horizontalTouch ? 2 : 0)
+      }, 0)
+      // Lower y/x keeps the plan easy to unload; adjacency reduces fragmented pockets.
+      return wallContact * 1000000 + adjacent * 1000 - y - x * 0.001
+    }
+
+    const candidatePoints = (length: number, width: number, placed: typeof placements) => {
+      const xs = new Set<number>([0])
+      const ys = new Set<number>([0])
+      for (const p of [...placed, ...blocked]) {
+        xs.add(p.x); xs.add(p.x + p.length)
+        ys.add(p.y); ys.add(p.y + p.width)
+      }
+      const points: Array<{ x: number; y: number }> = []
+      for (const y of ys) for (const x of xs) {
+        if (x + length <= v.vehicleLength * 1000 && y + width <= v.vehicleWidth * 1000) points.push({ x, y })
+      }
+      return points
+    }
 
     for (const item of items) {
-      const palletLength = item.group.length
-      const palletWidth = item.group.width
-      const orientations = item.group.rotatable && palletLength !== palletWidth
-        ? [[palletLength, palletWidth], [palletWidth, palletLength]]
-        : [[palletLength, palletWidth]]
-      const step = stepFor(palletLength, palletWidth)
-      let found: { x: number; y: number; length: number; width: number } | undefined
-
+      const orientations = item.group.rotatable && item.group.length !== item.group.width
+        ? [[item.group.length, item.group.width], [item.group.width, item.group.length]]
+        : [[item.group.length, item.group.width]]
+      let best: { x: number; y: number; length: number; width: number; score: number } | undefined
       for (const [length, width] of orientations) {
-        for (let y = 0; y + width <= v.vehicleWidth * 1000 && !found; y += step) {
-          for (let x = 0; x + length <= v.vehicleLength * 1000; x += step) {
-            if (canPlace(x, y, length, width, placements)) {
-              found = { x, y, length, width }
-              break
-            }
-          }
+        for (const point of candidatePoints(length, width, placements)) {
+          if (!canPlace(point.x, point.y, length, width, placements)) continue
+          const score = scoreCandidate(point.x, point.y, length, width, placements)
+          if (!best || score > best.score) best = { ...point, length, width, score }
         }
-        if (found) break
       }
-
-      if (found) placements.push({ ...found, group: item.group })
+      if (best) placements.push({ x: best.x, y: best.y, length: best.length, width: best.width, group: item.group })
     }
 
     const pallets = placements.map((p, i) => ({
@@ -252,6 +269,7 @@ function Assistant() {
 
 function Visualizer() {
   const { plan, calculations, selectedPallet, setSelectedPallet } = useLoadPlanStore()
+  const [zoom, setZoom] = useState(1)
   if (!plan) return <main className="visualizer empty"><div className="empty-art">▱ ▱</div><h2>Схема загрузки появится здесь</h2><p>Нажмите «Попробовать пример» или заполните параметры вручную.</p></main>
   const selected = plan.pallets.find(p => p.id === selectedPallet)
   const orientation = selected ? (selected.length >= selected.width ? 'По длине кузова' : 'Повернута на 90°') : '—'
@@ -278,7 +296,7 @@ function Visualizer() {
   const placedCount = placementParts ? Number(placementParts[1]) : plan.pallets.length
   const requestedCount = placementParts ? Number(placementParts[2]) : plan.pallets.length
   const unplacedCount = Math.max(0, requestedCount - placedCount)
-  return <main className="visualizer"><header className="visual-header"><div><span className="eyebrow">ПЛАН ЗАГРУЗКИ</span><h2>Кузов · {plan.vehicleLength} × {plan.vehicleWidth} × {plan.vehicleHeight} мм</h2></div><div className="header-stat"><b>{plan.pallets.length}/{plan.cargoGroups.reduce((sum, g) => sum + g.count, 0)}</b><span>паллет</span></div></header><section className="canvas-wrap"><svg viewBox={`-500 -280 ${plan.vehicleLength + 1000} ${plan.vehicleWidth + 750}`} role="img" aria-label="Вид сверху на кузов с паллетами" className="truck-svg"><defs><pattern id="grid" width="100" height="100" patternUnits="userSpaceOnUse"><path d="M 100 0 L 0 0 0 100" fill="none" stroke="#dbe5ea" strokeWidth="5" /></pattern></defs><text x={plan.vehicleLength / 2} y="-135" textAnchor="middle" className="dimension">{plan.vehicleLength.toLocaleString('ru-RU')} мм</text><path d={`M0 -80h${plan.vehicleLength}`} className="dimension-line" /><text x="-330" y={plan.vehicleWidth / 2} textAnchor="middle" transform={`rotate(-90 -330 ${plan.vehicleWidth / 2})`} className="dimension">{plan.vehicleWidth.toLocaleString('ru-RU')} мм</text><rect x="0" y="0" width={plan.vehicleLength} height={plan.vehicleWidth} rx="28" fill="url(#grid)" className="truck-body" /><rect x="0" y="0" width={plan.doors[0]?.length ?? 0} height={plan.vehicleWidth} fill="#d9e4e8" />{plan.gaps.map(g => <g key={g.id}><rect x={g.x} y={g.y} width={g.length} height={g.width} className="gap-zone" /><text x={g.x + g.length / 2} y={g.width / 2} textAnchor="middle" className="gap-label">ЗАЗОР</text></g>)}<path d={`M0 150h140 M0 ${Math.max(150, plan.vehicleWidth - 150)}h140`} className="door" /><text x={(plan.doors[0]?.length ?? 0) / 2} y={plan.vehicleWidth / 2} textAnchor="middle" transform={`rotate(-90 ${(plan.doors[0]?.length ?? 0) / 2} ${plan.vehicleWidth / 2})`} className="door-label">ДВЕРИ</text>{plan.obstacles.map(o => <g key={o.id}><rect x={o.x} y={o.y} width={o.length} height={o.width} rx="24" className="obstacle" /><text x={o.x + o.length / 2} y={o.y + o.width / 2} textAnchor="middle" className="obstacle-label">{o.label}</text></g>)}{plan.unavailableZones.map(o => <g key={o.id}><rect x={o.x} y={o.y} width={o.length} height={o.width} rx="16" className="unavailable-zone" /><text x={o.x + o.length / 2} y={o.y + o.width / 2} textAnchor="middle" className="obstacle-label">{o.label}</text></g>)}{plan.pallets.map(p => <g key={p.id} onClick={() => setSelectedPallet(p.id)} className="pallet-group"><rect x={p.x} y={p.y} width={p.length} height={p.width} rx="18" className={`pallet ${selectedPallet === p.id ? 'selected' : ''} ${conflicts.some(c => c.id === p.id) ? 'pallet-conflict' : ''}`} /><text x={p.x + p.length / 2} y={p.y + p.width / 2 + 70} textAnchor="middle" className="pallet-number">{p.id}</text></g>)}</svg></section><section className="bottom-info"><div className="selected-card"><span className="mini-pallet">▦</span><div><span className="eyebrow">ВЫБРАНА ПАЛЛЕТА</span><b>Паллета #{selected?.id ?? '—'} <small>· {selected?.weight ?? '—'} кг</small></b>{selected && <div className="pallet-details"><span>Размер: {(selected.length / 1000).toLocaleString('ru-RU')} × {(selected.width / 1000).toLocaleString('ru-RU')} м</span><span>Высота: {(selected.height / 1000).toLocaleString('ru-RU')} м</span><span>Координаты: X {(selected.x / 1000).toLocaleString('ru-RU')}, Y {(selected.y / 1000).toLocaleString('ru-RU')} м</span><span>Ориентация: {orientation}</span></div>}</div>{conflictReason && <div className="conflict-note">⚠ {conflictReason}</div>}</div><div className="summary"><span className="summary-title">ПРОВЕРКИ · ЭТАП 1</span>{calculations.map(c => <div className={`check ${c.id === 'count' && c.status === 'VIOLATION' ? 'check-placement-alert' : ''}`} key={c.id}><span className={`dot ${statusClass[c.status]}`} /><div><b>{c.label}</b><small>{c.note}</small>{c.id === 'count' && c.status === 'VIOLATION' && <div className="placement-alert"><div className="placement-alert-top"><strong>Не помещается: {unplacedCount} шт.</strong><span>{placedCount} из {requestedCount}</span></div><div className="placement-progress"><span style={{ width: `${requestedCount ? Math.min(100, placedCount / requestedCount * 100) : 0}%` }} /></div></div>}</div><strong>{c.value}</strong><em className={statusClass[c.status]}>{statusText[c.status]}</em></div>)}</div></section><div className="mode-note">2D схема · 3D — скоро</div></main>
+  return <main className="visualizer"><header className="visual-header"><div><span className="eyebrow">ПЛАН ЗАГРУЗКИ</span><h2>Кузов · {plan.vehicleLength} × {plan.vehicleWidth} × {plan.vehicleHeight} мм</h2></div><div className="header-stat"><b>{plan.pallets.length}/{plan.cargoGroups.reduce((sum, g) => sum + g.count, 0)}</b><span>паллет</span></div></header><section className="canvas-wrap"><div className="map-toolbar"><span>МАСШТАБ <b>{Math.round(zoom * 100)}%</b></span><div><button type="button" onClick={() => setZoom(z => Math.max(.75, Number((z - .25).toFixed(2))))} aria-label="Уменьшить">−</button><button type="button" onClick={() => setZoom(1)} aria-label="Сбросить масштаб">100%</button><button type="button" onClick={() => setZoom(z => Math.min(2.5, Number((z + .25).toFixed(2))))} aria-label="Увеличить">+</button></div></div><div className="svg-viewport"><svg viewBox={`-500 -280 ${plan.vehicleLength + 1000} ${plan.vehicleWidth + 750}`} style={{ transform: `scale(${zoom})` }} preserveAspectRatio="xMidYMid meet" role="img" aria-label="Вид сверху на кузов с паллетами" className="truck-svg"><defs><pattern id="grid" width="100" height="100" patternUnits="userSpaceOnUse"><path d="M 100 0 L 0 0 0 100" fill="none" stroke="#dbe5ea" strokeWidth="5" /></pattern></defs><text x={plan.vehicleLength / 2} y="-135" textAnchor="middle" className="dimension">{plan.vehicleLength.toLocaleString('ru-RU')} мм</text><path d={`M0 -80h${plan.vehicleLength}`} className="dimension-line" /><text x="-330" y={plan.vehicleWidth / 2} textAnchor="middle" transform={`rotate(-90 -330 ${plan.vehicleWidth / 2})`} className="dimension">{plan.vehicleWidth.toLocaleString('ru-RU')} мм</text><rect x="0" y="0" width={plan.vehicleLength} height={plan.vehicleWidth} rx="28" fill="url(#grid)" className="truck-body" /><rect x="0" y="0" width={plan.doors[0]?.length ?? 0} height={plan.vehicleWidth} fill="#d9e4e8" opacity=".7" /><path d={`M0 0H${plan.doors[0]?.length ?? 0} M0 ${plan.vehicleWidth}H${plan.doors[0]?.length ?? 0}`} className="door-opening" /><path d={`M0 0L${Math.max(80, (plan.doors[0]?.length ?? 0) * .8)} ${plan.vehicleWidth / 2}L0 ${plan.vehicleWidth}`} className="door-leaf" />{plan.gaps.map(g => <g key={g.id}><rect x={g.x} y={g.y} width={g.length} height={g.width} className="gap-zone" /><text x={g.x + g.length / 2} y={g.width / 2} textAnchor="middle" className="gap-label">ЗАЗОР</text></g>)}<path d={`M0 150h140 M0 ${Math.max(150, plan.vehicleWidth - 150)}h140`} className="door" /><text x={(plan.doors[0]?.length ?? 0) / 2} y={plan.vehicleWidth / 2} textAnchor="middle" transform={`rotate(-90 ${(plan.doors[0]?.length ?? 0) / 2} ${plan.vehicleWidth / 2})`} className="door-label">ДВЕРИ</text>{plan.obstacles.map(o => <g key={o.id}><rect x={o.x} y={o.y} width={o.length} height={o.width} rx="24" className="obstacle" /><text x={o.x + o.length / 2} y={o.y + o.width / 2} textAnchor="middle" className="obstacle-label">{o.label}</text></g>)}{plan.unavailableZones.map(o => <g key={o.id}><rect x={o.x} y={o.y} width={o.length} height={o.width} rx="16" className="unavailable-zone" /><text x={o.x + o.length / 2} y={o.y + o.width / 2} textAnchor="middle" className="obstacle-label">{o.label}</text></g>)}{plan.pallets.map(p => <g key={p.id} onClick={() => setSelectedPallet(p.id)} className="pallet-group"><rect x={p.x} y={p.y} width={p.length} height={p.width} rx="18" className={`pallet ${selectedPallet === p.id ? 'selected' : ''} ${conflicts.some(c => c.id === p.id) ? 'pallet-conflict' : ''}`} /><text x={p.x + p.length / 2} y={p.y + p.width / 2 + 70} textAnchor="middle" className="pallet-number">{p.id}</text></g>)}</svg></div></section><section className="bottom-info"><div className="selected-card"><span className="mini-pallet">▦</span><div><span className="eyebrow">ВЫБРАНА ПАЛЛЕТА</span><b>Паллета #{selected?.id ?? '—'} <small>· {selected?.weight ?? '—'} кг</small></b>{selected && <div className="pallet-details"><span>Размер: {(selected.length / 1000).toLocaleString('ru-RU')} × {(selected.width / 1000).toLocaleString('ru-RU')} м</span><span>Высота: {(selected.height / 1000).toLocaleString('ru-RU')} м</span><span>Координаты: X {(selected.x / 1000).toLocaleString('ru-RU')}, Y {(selected.y / 1000).toLocaleString('ru-RU')} м</span><span>Ориентация: {orientation}</span></div>}</div>{conflictReason && <div className="conflict-note">⚠ {conflictReason}</div>}</div><div className="summary"><span className="summary-title">ПРОВЕРКИ · ЭТАП 1</span>{calculations.map(c => <div className={`check ${c.id === 'count' && c.status === 'VIOLATION' ? 'check-placement-alert' : ''}`} key={c.id}><span className={`dot ${statusClass[c.status]}`} /><div><b>{c.label}</b><small>{c.note}</small>{c.id === 'count' && c.status === 'VIOLATION' && <div className="placement-alert"><div className="placement-alert-top"><strong>Не помещается: {unplacedCount} шт.</strong><span>{placedCount} из {requestedCount}</span></div><div className="placement-progress"><span style={{ width: `${requestedCount ? Math.min(100, placedCount / requestedCount * 100) : 0}%` }} /></div></div>}</div><strong>{c.value}</strong><em className={statusClass[c.status]}>{statusText[c.status]}</em></div>)}</div></section><div className="mode-note">2D схема · 3D — скоро</div></main>
 }
 
 function App() {
