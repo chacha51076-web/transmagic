@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useFieldArray, useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -497,18 +497,21 @@ function Visualizer() {
       plan.pallets.filter(p => p.id !== id).every(other => !overlapsRect(candidate, other))
   }
 
-  const pointerToSvg = (event: PointerEvent<SVGGElement>) => {
+  const clientToSvg = (clientX: number, clientY: number) => {
     const svg = svgRef.current
     const matrix = svg?.getScreenCTM()
     if (!svg || !matrix) return null
     const point = svg.createSVGPoint()
-    point.x = event.clientX
-    point.y = event.clientY
+    point.x = clientX
+    point.y = clientY
     return point.matrixTransform(matrix.inverse())
   }
 
-  const beginAxleDrag = (event: PointerEvent<SVGGElement>, axleId: string, currentX: number) => {
-    if (plan.axles.length < 2) return
+  const pointerToSvg = (event: ReactPointerEvent<SVGGElement>) =>
+    clientToSvg(event.clientX, event.clientY)
+
+  const beginAxleDrag = (event: ReactPointerEvent<SVGGElement>, axleId: string, currentX: number) => {
+    if (plan.axles.length < 2 || axleDrag) return
     const point = pointerToSvg(event)
     if (!point) return
     event.preventDefault()
@@ -517,32 +520,46 @@ function Visualizer() {
     setAxleDrag({ id: axleId, originalX: currentX, x: currentX })
   }
 
-  const updateAxleDrag = (event: PointerEvent<SVGGElement>, axleId: string) => {
-    if (!axleDrag || axleDrag.id !== axleId) return
-    const point = pointerToSvg(event)
+  const calculateDraggedAxleX = (clientX: number, axleId: string) => {
+    const point = clientToSvg(clientX, 0)
+    if (!point) return null
     const axles = plan.axles.slice().sort((a, b) => a.position - b.position)
     const currentIndex = axles.findIndex(axle => axle.id === axleId)
-    if (!point || currentIndex < 0) return
+    if (currentIndex < 0) return null
     const minGap = 500
     const minX = currentIndex > 0 ? axles[currentIndex - 1].position + minGap : 0
     const maxX = currentIndex < axles.length - 1 ? axles[currentIndex + 1].position - minGap : plan.vehicleLength
-    const x = Math.max(minX, Math.min(maxX, Math.round(point.x / 50) * 50))
-    setAxleDrag({ ...axleDrag, x })
+    return Math.max(minX, Math.min(maxX, Math.round(point.x / 50) * 50))
   }
 
-  const finishAxleDrag = async (event: PointerEvent<SVGGElement>, axleId: string) => {
-    if (!axleDrag || axleDrag.id !== axleId) return
-    event.preventDefault()
-    event.stopPropagation()
-    const current = axleDrag
-    setAxleDrag(null)
-    try { event.currentTarget.releasePointerCapture(event.pointerId) } catch {}
-    if (Math.abs(current.x - current.originalX) >= 50) {
-      await moveAxlePosition(axleId, current.x)
+  useEffect(() => {
+    if (!axleDrag) return
+    const handleMove = (event: globalThis.PointerEvent) => {
+      const x = calculateDraggedAxleX(event.clientX, axleDrag.id)
+      if (x == null) return
+      event.preventDefault()
+      setAxleDrag(current => current && current.id === axleDrag.id ? { ...current, x } : current)
     }
-  }
+    const handleUp = async (event: globalThis.PointerEvent) => {
+      const current = axleDrag
+      if (!current) return
+      const x = calculateDraggedAxleX(event.clientX, current.id) ?? current.x
+      setAxleDrag(null)
+      if (Math.abs(x - current.originalX) >= 50) {
+        await moveAxlePosition(current.id, x)
+      }
+    }
+    window.addEventListener('pointermove', handleMove, { passive: false })
+    window.addEventListener('pointerup', handleUp, { passive: false })
+    window.addEventListener('pointercancel', handleUp, { passive: false })
+    return () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+      window.removeEventListener('pointercancel', handleUp)
+    }
+  }, [axleDrag, plan.vehicleLength, moveAxlePosition])
 
-  const beginDrag = (event: PointerEvent<SVGGElement>, palletId: number) => {
+  const beginDrag = (event: ReactPointerEvent<SVGGElement>, palletId: number) => {
     if (event.button !== 0 && event.pointerType !== "touch") return
     const pallet = plan.pallets.find(p => p.id === palletId)
     const point = pointerToSvg(event)
@@ -563,7 +580,7 @@ function Visualizer() {
     })
   }
 
-  const updateDrag = (event: PointerEvent<SVGGElement>, palletId: number) => {
+  const updateDrag = (event: ReactPointerEvent<SVGGElement>, palletId: number) => {
     if (!drag || drag.id !== palletId) return
     const point = pointerToSvg(event)
     const pallet = plan.pallets.find(p => p.id === palletId)
@@ -573,7 +590,7 @@ function Visualizer() {
     setDrag({ ...drag, x, y, valid: isValidDrop(palletId, x, y) })
   }
 
-  const finishDrag = async (event: PointerEvent<SVGGElement>, palletId: number) => {
+  const finishDrag = async (event: ReactPointerEvent<SVGGElement>, palletId: number) => {
     if (!drag || drag.id !== palletId) return
     event.preventDefault()
     event.stopPropagation()
@@ -585,7 +602,7 @@ function Visualizer() {
     }
   }
 
-  const cancelDrag = (event: PointerEvent<SVGGElement>) => {
+  const cancelDrag = (event: ReactPointerEvent<SVGGElement>) => {
     if (!drag) return
     event.preventDefault()
     setDrag(null)
@@ -656,36 +673,35 @@ function Visualizer() {
         : ''
       const isDraggable = plan.axles.length >= 2
       const isDragging = axleDrag?.id === axle.id
+      const displayX = isDragging ? axleDrag!.x : x
       return <g
         key={axle.id}
         className={isDragging ? 'axle-dragging' : 'axle-drag-target'}
         pointerEvents={isDraggable ? 'all' : 'none'}
       >
         <rect
-          x={x - 75}
+          x={displayX - 75}
           y={0}
           width={150}
           height={plan.vehicleWidth}
           fill="transparent"
           className="axle-hit-box"
           pointerEvents={isDraggable ? 'all' : 'none'}
-          onPointerDown={e => beginAxleDrag(e, axle.id, x)}
-          onPointerMove={e => updateAxleDrag(e, axle.id)}
-          onPointerUp={e => void finishAxleDrag(e, axle.id)}
-          onPointerCancel={() => setAxleDrag(null)}
+          style={{ cursor: 'ew-resize' }}
+          onPointerDown={e => beginAxleDrag(e, axle.id, displayX)}
         />
         <line x1={x} y1={0} x2={x} y2={plan.vehicleWidth} className="axle-line" pointerEvents="none" />
         <g className="axle-wheels" pointerEvents="none">
-          <rect x={x - 58} y={-92} width="116" height="84" rx="24" className="axle-wheel axle-wheel-top" />
-          <rect x={x - 58} y={plan.vehicleWidth + 8} width="116" height="84" rx="24" className="axle-wheel axle-wheel-bottom" />
-          <rect x={x - 18} y={-18} width="36" height={plan.vehicleWidth + 36} rx="18" className="axle-bridge" />
-          {axleNumber === 2 && <><rect x={x - 92} y={-92} width="24" height="84" rx="10" className="axle-wheel axle-wheel-inner-top" /><rect x={x + 68} y={-92} width="24" height="84" rx="10" className="axle-wheel axle-wheel-inner-top" /><rect x={x - 92} y={plan.vehicleWidth + 8} width="24" height="84" rx="10" className="axle-wheel axle-wheel-inner-bottom" /><rect x={x + 68} y={plan.vehicleWidth + 8} width="24" height="84" rx="10" className="axle-wheel axle-wheel-inner-bottom" /></>}
+          <rect x={displayX - 58} y={-92} width="116" height="84" rx="24" className="axle-wheel axle-wheel-top" />
+          <rect x={displayX - 58} y={plan.vehicleWidth + 8} width="116" height="84" rx="24" className="axle-wheel axle-wheel-bottom" />
+          <rect x={displayX - 18} y={-18} width="36" height={plan.vehicleWidth + 36} rx="18" className="axle-bridge" />
+          {axleNumber === 2 && <><rect x={displayX - 92} y={-92} width="24" height="84" rx="10" className="axle-wheel axle-wheel-inner-top" /><rect x={displayX + 68} y={-92} width="24" height="84" rx="10" className="axle-wheel axle-wheel-inner-top" /><rect x={displayX - 92} y={plan.vehicleWidth + 8} width="24" height="84" rx="10" className="axle-wheel axle-wheel-inner-bottom" /><rect x={displayX + 68} y={plan.vehicleWidth + 8} width="24" height="84" rx="10" className="axle-wheel axle-wheel-inner-bottom" /></>}
         </g>
-        <circle cx={x} cy={plan.vehicleWidth + 42} r={46} className="axle-drag-handle" />
-        <text x={x} y={plan.vehicleWidth + 16} textAnchor="middle" className="axle-drag-hint">↔</text>
-        <rect x={x - 150} y={plan.vehicleWidth + 82} width="300" height="58" rx="12" className="axle-label-bg" />
-        <text x={x} y={plan.vehicleWidth + 119} textAnchor="middle" className="axle-label">Ось {axleNumber}</text>
-        {axleRole && <text x={x} y={plan.vehicleWidth + 151} textAnchor="middle" className="axle-role-label">{axleRole}</text>}
+        <circle cx={displayX} cy={plan.vehicleWidth + 42} r={46} className="axle-drag-handle" />
+        <text x={displayX} y={plan.vehicleWidth + 16} textAnchor="middle" className="axle-drag-hint">↔</text>
+        <rect x={displayX - 150} y={plan.vehicleWidth + 82} width="300" height="58" rx="12" className="axle-label-bg" />
+        <text x={displayX} y={plan.vehicleWidth + 119} textAnchor="middle" className="axle-label">Ось {axleNumber}</text>
+        {axleRole && <text x={displayX} y={plan.vehicleWidth + 151} textAnchor="middle" className="axle-role-label">{axleRole}</text>}
       </g>
     })}
     {plan.pallets.length > 0 && <g>
