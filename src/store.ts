@@ -49,7 +49,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
     const pallet = plan.pallets.find(p => p.id === selectedPallet)
     if (!pallet || !pallet.rotatable || pallet.length === pallet.width) return
     const rotated = { ...pallet, length: pallet.width, width: pallet.length }
-    const blocked = [...plan.obstacles, ...plan.unavailableZones, ...plan.gaps]
+    const blocked = [...plan.obstacles.filter(o => o.blocksFloor !== false), ...plan.unavailableZones, ...plan.gaps]
     const overlaps = (a: Rect, z: Rect) =>
       a.x < z.x + z.length && a.x + a.length > z.x &&
       a.y < z.y + z.width && a.y + a.width > z.y
@@ -90,7 +90,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
     const overlaps = (a: Rect, z: Rect) =>
       a.x < z.x + z.length && a.x + a.length > z.x &&
       a.y < z.y + z.width && a.y + a.width > z.y
-    const blocked = [...plan.obstacles, ...plan.unavailableZones, ...plan.gaps]
+    const blocked = [...plan.obstacles.filter(o => o.blocksFloor !== false), ...plan.unavailableZones, ...plan.gaps]
     const valid =
       candidate.x >= 0 && candidate.y >= 0 &&
       candidate.x + candidate.length <= plan.vehicleLength &&
