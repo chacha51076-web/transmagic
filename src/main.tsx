@@ -21,6 +21,7 @@ const cargoGroupSchema = z.object({
 })
 const schema = z.object({
   vehicleLength: numberField.pipe(z.number().min(0.1)), vehicleWidth: numberField.pipe(z.number().min(0.1)), vehicleHeight: numberField.pipe(z.number().min(0.1)),
+  coolerLength: numberField.pipe(z.number().min(0.01)), coolerHeight: numberField.pipe(z.number().min(0.01)), coolerProjection: numberField.pipe(z.number().min(0.01)),
   payloadCapacityKg: optionalNumberField, doorWidth: numberField.pipe(z.number().min(0)), gap: numberField.pipe(z.number().min(0)),
   hasObstacle: z.boolean(),
   obstacleMode: z.enum(['AUTO', 'FIXED']),
@@ -46,7 +47,7 @@ function PlanForm() {
   const { register, handleSubmit, setValue, watch, control, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      vehicleLength: 6, vehicleWidth: 2.05, vehicleHeight: 2.2, payloadCapacityKg: undefined, doorWidth: 0.23, gap: 0,
+      vehicleLength: 6, vehicleWidth: 2.05, vehicleHeight: 2.2, coolerLength: 1.23, coolerHeight: 0.29, coolerProjection: 0.68, payloadCapacityKg: undefined, doorWidth: 0.23, gap: 0,
       hasObstacle: false, obstacleMode: 'AUTO', obstacleX: 5.23, obstacleY: 0.7, obstacleLength: 0.42, obstacleWidth: 0.54, unavailable: false, unavailableX: 2.5, unavailableY: 0, unavailableLength: 1.0, unavailableWidth: 2.05, axleCount: 0,
       cargoGroups: [{ name: 'EUR паллета', length: 1.2, width: 0.8, height: 0, weight: 450, count: 10, rotatable: true, stackable: false }],
     },
@@ -66,7 +67,14 @@ function PlanForm() {
       stackable: false,
     }))
 
-    const cooler = { x: Math.max(0, v.vehicleLength * 1000 - 400), y: 0, length: 400, width: 540 }
+    const coolerLength = v.coolerLength * 1000
+    const coolerProjection = v.coolerProjection * 1000
+    const cooler = {
+      x: Math.max(0, v.vehicleLength * 1000 - coolerProjection),
+      y: Math.max(0, (v.vehicleWidth * 1000 - coolerLength) / 2),
+      length: coolerProjection,
+      width: coolerLength,
+    }
     const obstacleLength = v.obstacleLength * 1000
     const obstacleWidth = v.obstacleWidth * 1000
     const autoObstacle = {
@@ -237,6 +245,8 @@ function PlanForm() {
   return <form onSubmit={handleSubmit(submit)} className="plan-form">
     <div className="section-label">Кузов, двери и зазоры</div>
     <div className="field-grid three"><Field label="Длина, м" input={<input inputMode="decimal" placeholder="6,0" {...register('vehicleLength')} />} error={errors.vehicleLength?.message} /><Field label="Ширина, м" input={<input inputMode="decimal" placeholder="2,05" {...register('vehicleWidth')} />} error={errors.vehicleWidth?.message} /><Field label="Высота, м" input={<input inputMode="decimal" placeholder="2,2" {...register('vehicleHeight')} />} error={errors.vehicleHeight?.message} /></div>
+    <div className="section-label cargo-label">Холодильная установка · по центру передней стенки</div>
+    <div className="field-grid three"><Field label="Длина, м" input={<input inputMode="decimal" placeholder="1,23" {...register('coolerLength')} />} error={errors.coolerLength?.message} /><Field label="Высота, м" input={<input inputMode="decimal" placeholder="0,29" {...register('coolerHeight')} />} error={errors.coolerHeight?.message} /><Field label="Выпирает, м" input={<input inputMode="decimal" placeholder="0,68" {...register('coolerProjection')} />} error={errors.coolerProjection?.message} /></div>
     <div className="field-grid three"><Field label="Двери, м" input={<input inputMode="decimal" placeholder="0,23" {...register('doorWidth')} />} error={errors.doorWidth?.message} /><Field label="Зазор, м" input={<input inputMode="decimal" placeholder="0" {...register('gap')} />} error={errors.gap?.message} /><Field label="Грузоподъёмность, кг" input={<input {...register('payloadCapacityKg')} placeholder="не указана" />} error={errors.payloadCapacityKg?.message} /></div>
     <div className="section-label cargo-label">Препятствия и недоступные зоны</div>
     <label className="check-field"><input type="checkbox" {...register('hasObstacle')} /> Есть препятствие</label>
