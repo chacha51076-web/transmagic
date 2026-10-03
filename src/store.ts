@@ -118,7 +118,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
     return true
   },
   moveAxlePosition: async (id, x) => {
-    const { plan } = get()
+    const { plan, variants, selectedVariant } = get()
     if (!plan || plan.axles.length < 2 || !Number.isFinite(x)) return false
     const sorted = plan.axles.slice().sort((a, b) => a.position - b.position)
     const targetIndex = sorted.findIndex(axle => axle.id === id)
@@ -137,10 +137,19 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
       source: 'FIXED' as const,
     }))
     const nextPlan = { ...plan, axles: nextAxles }
+    const nextVariants = variants.map(variant => ({
+      ...variant,
+      axles: variant.axles.map(axle => {
+        const updated = nextAxles.find(next => next.id === axle.id)
+        return updated ? { ...axle, position: updated.position, source: 'FIXED' as const } : axle
+      }),
+    }))
     const calculations = await SolverService.summarize(nextPlan)
     set(state => ({
       history: [...state.history, plan].slice(-30),
       plan: nextPlan,
+      variants: nextVariants,
+      selectedVariant,
       calculations,
       error: null,
       rotationFeedback: null,
