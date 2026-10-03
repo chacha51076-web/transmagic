@@ -306,3 +306,9 @@
 .axle-bridge { fill:#8da0a4; stroke:#3e555b; stroke-width:8; }
 .axle-drag-target:hover .axle-wheel { fill:#45646b; }
 .axle-dragging .axle-wheel { fill:#a7ed4f; stroke:#315c31; }
+
+.axle-drag-target { touch-action:none; user-select:none; }
+.axle-hit-box { fill:rgba(0,0,0,0.001); stroke:transparent; stroke-width:90; cursor:ew-resize; pointer-events:all !important; }
+.axle-hit-box:hover { fill:rgba(167,237,79,.10); }
+.axle-line { stroke:#425a61; stroke-width:32; stroke-linecap:round; stroke-dasharray:90 35; pointer-events:none; }
+.axle-wheel { filter:drop-shadow(0 2px 2px rgba(24,47,53,.18)); }
