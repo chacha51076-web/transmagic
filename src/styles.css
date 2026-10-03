@@ -199,3 +199,9 @@
 .coordinate-system .axis-arrow{fill:#314f55}
 .coordinate-system text{font-size:52px;letter-spacing:1px}
 .coordinate-system .orientation-label{font-size:42px;letter-spacing:2px}
+
+.coordinate-system{z-index:20;font-family:'DM Mono',monospace;font-weight:800;fill:#203f46}
+.coordinate-system line{stroke:#203f46;stroke-width:14}
+.coordinate-system .axis-arrow{fill:#203f46}
+.coordinate-system text{font-size:68px;letter-spacing:1px;paint-order:stroke;stroke:#fff;stroke-width:10}
+.coordinate-system .orientation-label{font-size:56px;letter-spacing:2px}
