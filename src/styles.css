@@ -287,3 +287,8 @@
 .axle-drag-target:hover .axle-drag-handle,
 .axle-dragging .axle-drag-handle { fill:#b7f35b; stroke:#3e6b33; }
 .axle-dragging .axle-line { stroke-width:28; }
+
+.axle-role-label { font-size: 9px; opacity: .68; }
+.axle-drag-handle { pointer-events: all; }
+.axle-drag-target:hover .axle-role-label,
+.axle-dragging .axle-role-label { opacity: 1; }
