@@ -337,7 +337,7 @@ export const PlacementService = {
       return placed
     }
 
-    const variants = modes.map(mode => {
+    const rawVariants = modes.map(mode => {
       const greedy = buildGreedy(mode)
       return {
         ...plan,
@@ -345,7 +345,7 @@ export const PlacementService = {
       }
     })
 
-    return variants.map(variant => ({
+    const safeVariants = rawVariants.map(variant => ({
       ...variant,
       pallets: variant.pallets
         .filter((p, index, array) =>
@@ -359,6 +359,44 @@ export const PlacementService = {
         )
         .map((p, index) => ({ ...p, id: index + 1 })),
     }))
+
+    // В интерфейс не отдаём заведомо слабый вариант, который размещает
+    // заметно меньше груза, чем лучший найденный вариант. Сначала
+    // максимизируем количество реально размещённых паллет, и только
+    // среди вариантов с этим максимумом сравниваем качество раскладки.
+    const maxPlaced = Math.max(0, ...safeVariants.map(variant => variant.pallets.length))
+    const requested = requestedCount
+
+    const signature = (variant: LoadPlan) =>
+      variant.pallets
+        .slice()
+        .sort((a, b) => a.id - b.id)
+        .map(p => [p.length, p.width, p.x, p.y].join(':'))
+        .join('|')
+
+    const ranked = safeVariants
+      .filter(variant => variant.pallets.length === maxPlaced)
+      .sort((a, b) => {
+        const scoreA = scorePlan(a.pallets, 'BALANCED')
+        const scoreB = scorePlan(b.pallets, 'BALANCED')
+        return scoreB - scoreA
+      })
+
+    const unique: LoadPlan[] = []
+    const seen = new Set<string>()
+    for (const variant of ranked) {
+      const key = signature(variant)
+      if (seen.has(key)) continue
+      seen.add(key)
+      unique.push(variant)
+    }
+
+    // Если полный груз в принципе помещается (requested == maxPlaced),
+    // варианты с меньшим количеством паллет вообще не показываем.
+    // Если часть груза физически не помещается, показываем только
+    // максимально заполненные безопасные варианты.
+    const preferred = unique.filter(variant => variant.pallets.length === maxPlaced)
+    return preferred.slice(0, 3)
   }
 }
 
