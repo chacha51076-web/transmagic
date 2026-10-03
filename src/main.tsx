@@ -181,7 +181,23 @@ function PlanForm() {
       if (best) placements.push({ x: best.x, y: best.y, length: best.length, width: best.width, group: item.group })
     }
 
-    const pallets = placements.map((p, i) => ({
+    // Финальный safety-check: в итоговый план никогда не попадает груз,
+    // пересекающий холодильную установку, препятствие, недоступную зону,
+    // зазор или другой груз. Если свободного места нет — груз остаётся
+    // неразмещённым и это отражается как N / requested.
+    const safePlacements = placements.filter((p, index) => {
+      const candidate = { x: p.x, y: p.y, length: p.length, width: p.width }
+      const inside = candidate.x >= 0 && candidate.y >= 0 &&
+        candidate.x + candidate.length <= v.vehicleLength * 1000 &&
+        candidate.y + candidate.width <= v.vehicleWidth * 1000
+      if (!inside || blockedZones.some(zone => overlaps(candidate, zone))) return false
+      return !placements.some((other, otherIndex) =>
+        otherIndex !== index &&
+        overlaps(candidate, { x: other.x, y: other.y, length: other.length, width: other.width })
+      )
+    })
+
+    const pallets = safePlacements.map((p, i) => ({
       id: i + 1,
       length: p.length,
       width: p.width,
