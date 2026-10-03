@@ -127,7 +127,7 @@ export const PlacementService = {
               sideDiversity * 1000 -
               sideImbalance * 150000 -
               longitudinalPenalty * (mode === 'AXLE' ? 26000 : 18000) -
-              transversePenalty * 50000 -
+              transversePenalty * 200 -
               x * (mode === 'REAR' ? 10 : 1)
 
             if (score > bestScore) {
