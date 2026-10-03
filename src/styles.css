@@ -139,3 +139,16 @@
     height: 7px;
   }
 }
+
+.gap-zone {
+  fill: #eef0dc;
+  stroke: #a7aa7a;
+  stroke-width: 8;
+  stroke-dasharray: 24 16;
+  opacity: .9;
+}
+.gap-label {
+  fill: #737650;
+  font: 500 54px 'DM Mono';
+  letter-spacing: 4px;
+}
