@@ -38,6 +38,7 @@ const schema = z.object({
   axleCount: z.coerce.number().int().min(0).max(8),
   axleMode: z.enum(['AUTO', 'FIXED']),
   axlePositions: z.array(numberField.pipe(z.number().min(0))).length(8),
+  axleCapacitiesKg: z.array(optionalNonNegativeNumberField).length(8),
   cargoGroups: z.array(cargoGroupSchema).min(1).max(8),
 }).superRefine((value, ctx) => {
   if (value.axleMode !== 'FIXED') return
@@ -117,7 +118,7 @@ function PlanForm() {
     resolver: zodResolver(schema),
     defaultValues: {
       vehicleLength: 6, vehicleWidth: 2.05, vehicleHeight: 2.2, coolerLength: 1.23, coolerHeight: 0.29, coolerProjection: 0.68, payloadCapacityKg: undefined, doorWidth: 0.23, gap: 0,
-      hasObstacle: false, obstacleMode: 'AUTO', obstacleWeight: 0, obstacleX: 5.23, obstacleY: 0.7, obstacleLength: 0.42, obstacleWidth: 0.54, unavailable: false, unavailableX: 2.5, unavailableY: 0, unavailableLength: 1.0, unavailableWidth: 2.05, axleCount: 2, axleMode: 'AUTO', axlePositions: [5.4, 4.2, 0, 0, 0, 0, 0, 0],
+      hasObstacle: false, obstacleMode: 'AUTO', obstacleWeight: 0, obstacleX: 5.23, obstacleY: 0.7, obstacleLength: 0.42, obstacleWidth: 0.54, unavailable: false, unavailableX: 2.5, unavailableY: 0, unavailableLength: 1.0, unavailableWidth: 2.05, axleCount: 2, axleMode: 'AUTO', axlePositions: [5.4, 4.2, 0, 0, 0, 0, 0, 0], axleCapacitiesKg: [undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined],
       cargoGroups: [{ name: 'EUR паллета', length: 1.2, width: 0.8, height: 0, weight: 450, count: 10, rotatable: true, stackable: false }],
     },
   })
@@ -331,7 +332,7 @@ function PlanForm() {
           : v.vehicleLength * 1000 * (
               0.90 - 0.30 * i / Math.max(1, Math.max(2, v.axleCount) - 1)
             ),
-        capacityKg: 0,
+        capacityKg: v.axleCapacitiesKg[i] ?? 0,
         source: v.axleMode,
       })),
       cargoGroups,
@@ -426,6 +427,14 @@ function PlanForm() {
       <div className="field-grid two axle-mode-grid">
         <Field label="Количество осей" input={<input {...register('axleCount')} placeholder="2" />} error={errors.axleCount?.message} />
         <div className="axle-current-mode"><span>Режим</span><b>{watch('axleMode') === 'FIXED' ? 'Ручной ввод' : 'Автоматическая модель'}</b></div>
+      </div>
+      <div className="axle-capacity-block">
+        <small className="field-hint">Допустимая нагрузка используется только для проверки. Оставьте поле пустым, если данных нет.</small>
+        <div className="field-grid four">
+          {Array.from({ length: Math.max(2, Number(watch('axleCount')) || 2) }, (_, index) =>
+            <Field key={index} label={'Ось ' + (index + 1) + ' · допуск, кг'} input={<input inputMode="decimal" placeholder="не указано" {...register((`axleCapacitiesKg.${index}`) as const)} />} error={errors.axleCapacitiesKg?.[index]?.message} />
+          )}
+        </div>
       </div>
       {watch('axleMode') === 'FIXED' && <div className="axle-position-block">
         <small className="field-hint">Укажите расстояние от задней стенки кузова до центра каждой оси. В нашей схеме Ось 1 — передняя (рулевая), Ось 2 — задняя (ведущая). Поэтому координата Оси 1 больше координаты Оси 2.</small>
