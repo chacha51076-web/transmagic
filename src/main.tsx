@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, ty
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useFieldArray, useForm } from 'react-hook-form'
 import { z } from 'zod'
-import { PlacementService, SpeechService } from './services'
+import { calculateStaticLoad, PlacementService, SpeechService } from './services'
 import { useLoadPlanStore } from './store'
 import type { CheckStatus, CargoGroup, LoadPlan } from './types'
 import './styles.css'
@@ -62,45 +62,41 @@ const statusClass: Record<CheckStatus, string> = { CHECKED: 'status-ok', VIOLATI
 const statusText: Record<CheckStatus, string> = { CHECKED: 'ПРОВЕРЕНО', VIOLATION: 'НАРУШЕНИЕ', NOT_CHECKED: 'НЕ ПРОВЕРЕНО', CALCULATED: 'РАССЧИТАНО' }
 const getLoadGeometry = (plan: LoadPlan) => {
   const sortedAxles = plan.axles.slice().sort((a, b) => a.position - b.position)
-  const axlePositions = sortedAxles.length >= 2
-    ? sortedAxles.map(a => a.position)
-    : [plan.vehicleLength * 0.70, plan.vehicleLength * 0.90]
-  const fixedWeight = plan.obstacles.reduce((sum, o) => sum + (o.weight ?? 0), 0)
-  const totalWeight = plan.pallets.reduce((sum, p) => sum + p.weight, 0) + fixedWeight
-  const cgX = totalWeight > 0
-    ? (plan.pallets.reduce((sum, p) => sum + p.weight * (p.x + p.length / 2), 0) + plan.obstacles.reduce((sum, o) => sum + (o.weight ?? 0) * (o.x + o.length / 2), 0)) / totalWeight
-    : plan.vehicleLength / 2
-  const cgY = totalWeight > 0
-    ? (plan.pallets.reduce((sum, p) => sum + p.weight * (p.y + p.width / 2), 0) + plan.obstacles.reduce((sum, o) => sum + (o.weight ?? 0) * (o.y + o.width / 2), 0)) / totalWeight
-    : plan.vehicleWidth / 2
   const automatic = plan.axles.length < 2 || plan.axles.some(axle => axle.source === 'AUTO')
-  const axleLoads = !automatic && sortedAxles.length === 2 && totalWeight > 0
+  const analysis = calculateStaticLoad(plan)
+  const axlePositions = analysis.axlePositions.length >= 2
+    ? analysis.axlePositions
+    : [plan.vehicleLength * 0.70, plan.vehicleLength * 0.90]
+  const axleLoads = !automatic && analysis.valid
     ? sortedAxles.map((axle, index) => {
-        const rear = sortedAxles[0]
-        const front = sortedAxles[1]
-        const loadKg = index === 0
-          ? totalWeight * (front.position - cgX) / (front.position - rear.position)
-          : totalWeight * (cgX - rear.position) / (front.position - rear.position)
-        const valid = Number.isFinite(loadKg) && loadKg >= 0
-        const percent = valid ? loadKg / totalWeight * 100 : null
+        const loadKg = analysis.axleLoads[index]
+        const percent = analysis.totalWeight > 0 ? loadKg / analysis.totalWeight * 100 : null
         return {
           ...axle,
-          axleNumber: index === 1 ? 1 : 2,
-          role: index === 1 ? 'передняя / рулевая' : 'задняя / ведущая',
-          loadKg: valid ? loadKg : null,
+          axleNumber: axlePositions.length === 2 ? (index === 1 ? 1 : 2) : index + 1,
+          role: axlePositions.length === 2 ? (index === 1 ? 'передняя / рулевая' : 'задняя / ведущая') : '',
+          loadKg,
           percent,
-          overCapacity: valid && axle.capacityKg > 0 ? loadKg > axle.capacityKg : false,
+          overCapacity: axle.capacityKg > 0 ? loadKg > axle.capacityKg : false,
         }
       })
     : sortedAxles.map((axle, index) => ({
         ...axle,
-        axleNumber: sortedAxles.length === 2 ? (index === 1 ? 1 : 2) : index + 1,
-        role: sortedAxles.length === 2 ? (index === 1 ? 'передняя / рулевая' : 'задняя / ведущая') : '',
+        axleNumber: axlePositions.length === 2 ? (index === 1 ? 1 : 2) : index + 1,
+        role: axlePositions.length === 2 ? (index === 1 ? 'передняя / рулевая' : 'задняя / ведущая') : '',
         loadKg: null,
         percent: null,
         overCapacity: false,
       }))
-  return { axlePositions, axleLoads, cgX, cgY, totalWeight, assumed: automatic }
+  return {
+    axlePositions,
+    axleLoads,
+    cgX: analysis.cgX,
+    cgY: analysis.cgY,
+    totalWeight: analysis.totalWeight,
+    assumed: automatic,
+    loadModelValid: analysis.valid,
+  }
 }
 const presets = [
   ['EUR 1,2 × 0,8 м', 1.2, 0.8], ['1,2 × 1,0 м', 1.2, 1.0], ['1,2 × 1,2 м', 1.2, 1.2], ['Свои размеры', 0, 0],
