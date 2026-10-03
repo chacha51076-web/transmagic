@@ -264,3 +264,19 @@
 @media (max-width: 760px) {
   .axle-position-block .field-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+.axle-control-card { margin: 8px 0 14px; padding: 12px; border: 1px solid rgba(146,166,171,.35); border-radius: 12px; background: rgba(255,255,255,.035); }
+.axle-control-head { display:flex; justify-content:space-between; gap:10px; align-items:baseline; margin-bottom:8px; }
+.axle-control-head strong { font-size:12px; }
+.axle-control-head span { font-size:10px; opacity:.62; }
+.axle-mode-switch { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:10px; }
+.axle-mode-switch button { border:1px solid rgba(146,166,171,.38); border-radius:9px; padding:8px 9px; background:transparent; color:inherit; text-align:left; cursor:pointer; font:inherit; }
+.axle-mode-switch button.active { border-color:#a7ed4f; background:rgba(167,237,79,.13); }
+.axle-mode-switch button small { display:block; margin-top:2px; opacity:.6; font-size:9px; }
+.axle-current-mode { display:flex; flex-direction:column; justify-content:center; min-height:42px; padding:0 10px; border-radius:8px; background:rgba(255,255,255,.035); }
+.axle-current-mode span { font-size:9px; opacity:.58; text-transform:uppercase; }
+.axle-current-mode b { font-size:11px; margin-top:3px; }
+@media (max-width:760px) {
+  .axle-mode-switch { grid-template-columns:1fr; }
+  .axle-control-head { align-items:flex-start; flex-direction:column; gap:2px; }
+}
