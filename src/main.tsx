@@ -151,6 +151,7 @@ function PlanForm() {
     }))
 
     const coolerLength = v.coolerLength * 1000
+    const coolerHeight = v.coolerHeight * 1000
     const coolerProjection = v.coolerProjection * 1000
     const cooler = {
       x: Math.max(0, v.vehicleLength * 1000 - coolerProjection),
@@ -332,6 +333,11 @@ function PlanForm() {
       vehicleLength: v.vehicleLength * 1000,
       vehicleWidth: v.vehicleWidth * 1000,
       vehicleHeight: v.vehicleHeight * 1000,
+      fixedCooler: {
+        width: coolerLength,
+        projection: coolerProjection,
+        height: coolerHeight,
+      },
       payloadCapacityKg: v.payloadCapacityKg,
       doors: [{ id: 'rear', x: 0, y: 0, length: v.doorWidth * 1000, width: v.vehicleWidth * 1000, label: 'Двери' }],
       gaps: v.gap ? [{ id: 'gap', x: v.doorWidth * 1000, y: 0, length: v.gap * 1000, width: v.vehicleWidth * 1000, label: 'Зазор' }] : [],
