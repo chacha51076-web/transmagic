@@ -165,3 +165,24 @@
   .remove-group{min-height:40px;padding:8px 10px;font-size:11px}
   .add-group-button{min-height:44px;font-size:12px}
 }
+
+.canvas-wrap{position:relative;overflow:hidden;border:1px solid #dbe4e6;border-radius:14px;background:#fbfcfc;padding:14px}
+.svg-viewport{overflow:auto;max-width:100%;max-height:min(62vh,620px);padding:18px;scrollbar-width:thin}
+.truck-svg{width:100%;min-width:720px;transform-origin:center center;transition:transform .2s ease}
+.map-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;color:#82979b;font:500 10px 'DM Mono';letter-spacing:.08em}
+.map-toolbar b{color:#31484d}
+.map-toolbar>div{display:flex;gap:5px}
+.map-toolbar button{min-width:38px;min-height:34px;border:1px solid #d3dfe1;border-radius:7px;background:#fff;color:#4c6469;font:600 10px 'DM Mono'}
+.map-toolbar button:hover{border-color:#9bb0b4;background:#f2f6f6}
+.door-opening{fill:none;stroke:#57747a;stroke-width:16;stroke-dasharray:32 20}
+.door-leaf{fill:none;stroke:#8da3a7;stroke-width:12;stroke-linecap:round;stroke-linejoin:round}
+.obstacle{fill:#d6e0e3;stroke:#8fa5aa;stroke-width:14;stroke-dasharray:18 12}
+.unavailable-zone{stroke-width:10;stroke-dasharray:30 16}
+.gap-zone{stroke-width:10;stroke-dasharray:20 14}
+@media(max-width:760px){
+  .canvas-wrap{padding:10px;border-radius:12px}
+  .svg-viewport{max-height:58vh;padding:10px}
+  .truck-svg{min-width:680px}
+  .map-toolbar{font-size:11px}
+  .map-toolbar button{min-width:44px;min-height:44px;font-size:11px}
+}
