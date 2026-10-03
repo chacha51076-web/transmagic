@@ -236,3 +236,22 @@
 .pallet-actions{display:flex;align-items:center;gap:10px;margin:8px 0 10px}.pallet-actions button{border:1px solid #c9d9dc;background:#f7faf9;border-radius:7px;padding:7px 10px;font:600 10px 'DM Mono';cursor:pointer}.pallet-actions button:hover:not(:disabled){border-color:#9bc94d;background:#f4fbe8}.pallet-actions button:disabled{opacity:.45;cursor:not-allowed}.pallet-actions label{display:flex;align-items:center;gap:6px;font:600 10px 'DM Mono';color:#6b8186}.pallet-actions input{width:78px;border:1px solid #c9d9dc;border-radius:6px;padding:6px 7px;font:600 11px 'DM Mono';background:#fff;color:#29464c}
 
 .pallet-rotate-control{cursor:pointer;pointer-events:all}.pallet-rotate-control circle{fill:#17363d;stroke:#b7ef62;stroke-width:10}.pallet-rotate-control text{fill:#b7ef62;font:700 72px Syne;pointer-events:none}.pallet-rotate-control:hover circle{fill:#284e56;stroke:#d8ff91}.cg-change line{stroke:#e08b48;stroke-width:20;stroke-dasharray:45 28;filter:drop-shadow(0 3px 2px rgba(0,0,0,.12))}.cg-change text{fill:#b5672e;font:700 48px 'DM Mono';paint-order:stroke;stroke:#fff;stroke-width:12;stroke-linejoin:round}.cg-change-arrow{fill:#e08b48}.cg-marker-changed{fill:#ffca7b;stroke:#b5672e;stroke-width:20;filter:drop-shadow(0 3px 3px rgba(0,0,0,.15))}.compact-hint{margin:-2px 0 9px;color:#819398;font:500 9px/1.45 'DM Mono';max-width:420px}.pallet-actions button{min-height:38px}.pallet-rotate-control{transition:opacity .15s}.pallet-rotate-control:hover{opacity:.9}
+
+/* Manual pallet interaction */
+.map-toolbar { flex-wrap: wrap; }
+.map-toolbar > span { flex: 1 1 240px; }
+.map-actions { display:flex; flex-wrap:wrap; gap:5px; align-items:center; }
+.map-actions button { min-width:auto; padding:7px 9px; }
+.map-actions button:disabled { opacity:.45; cursor:not-allowed; }
+.pallet-group { cursor:grab; touch-action:none; user-select:none; }
+.pallet-group:active { cursor:grabbing; }
+.pallet-dragging { cursor:grabbing; }
+.pallet-dragging .pallet { filter:drop-shadow(0 8px 7px rgba(27,55,61,.22)); opacity:.94; }
+.pallet.drag-valid { fill:#dff6b5; stroke:#5e9a3f; stroke-width:24; }
+.pallet.drag-invalid { fill:#f8c7c0; stroke:#b65c5c; stroke-width:24; stroke-dasharray:30 18; }
+@media(max-width:760px){
+  .map-toolbar { align-items:stretch; gap:8px; }
+  .map-toolbar > span { flex-basis:100%; line-height:1.4; }
+  .map-actions { width:100%; display:grid; grid-template-columns:1fr 1fr repeat(3,44px); }
+  .map-actions button { min-height:44px; font-size:10px; padding:6px; }
+}
