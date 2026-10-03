@@ -252,7 +252,7 @@ function PlanForm() {
       payloadCapacityKg: v.payloadCapacityKg,
       doors: [{ id: 'rear', x: 0, y: 0, length: v.doorWidth * 1000, width: v.vehicleWidth * 1000, label: 'Двери' }],
       gaps: v.gap ? [{ id: 'gap', x: v.doorWidth * 1000, y: 0, length: v.gap * 1000, width: v.vehicleWidth * 1000, label: 'Зазор' }] : [],
-      obstacles: [{ id: 'cooler', ...cooler, label: 'Холодильная установка' }, ...customObstacles.map((o, index) => ({ id: `obstacle-${index + 1}`, ...o, label: v.obstacleMode === 'FIXED' ? 'Препятствие · фиксированное' : 'Препятствие · авто' }))],
+      obstacles: [{ id: 'cooler', ...cooler, label: 'Холодильная установка' }, ...customObstacles.map((o, index) => ({ id: `obstacle-${index + 1}`, ...o, label: v.obstacleMode === 'FIXED' ? 'Уже загружено · фиксированное' : 'Уже загружено · у кабины' }))],
       unavailableZones: v.unavailable ? [{ id: 'unavailable', x: v.unavailableX * 1000, y: v.unavailableY * 1000, length: v.unavailableLength * 1000, width: v.unavailableWidth * 1000, label: 'Недоступная зона' }] : [],
       // Если пользователь не указал оси, используем минимальную базовую конфигурацию
       // для грузового кузова — 2 оси. Это только геометрическая модель:
