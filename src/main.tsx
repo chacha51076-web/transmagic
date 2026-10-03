@@ -122,7 +122,20 @@ function PlanForm() {
     },
   })
   const { fields, append, remove } = useFieldArray({ control, name: 'cargoGroups' })
+  const currentPlan = useLoadPlanStore(s => s.plan)
   const [presetByGroup, setPresetByGroup] = useState<number[]>([0])
+
+  // После ручного перетаскивания осей переносим их фактические координаты
+  // обратно в форму, чтобы кнопка «Построить план» не возвращала AUTO-положение.
+  useEffect(() => {
+    if (!currentPlan || currentPlan.axles.length < 2) return
+    if (!currentPlan.axles.some(axle => axle.source === 'FIXED')) return
+    const ordered = currentPlan.axles.slice().sort((a, b) => b.position - a.position)
+    setValue('axleMode', 'FIXED', { shouldValidate: true })
+    ordered.forEach((axle, index) => {
+      setValue(`axlePositions.${index}`, axle.position / 1000, { shouldValidate: false })
+    })
+  }, [currentPlan, setValue])
   const submit = (v: FormValues) => {
     const cargoGroups: CargoGroup[] = v.cargoGroups.map((group, index) => ({
       id: `cargo-${index + 1}`,
