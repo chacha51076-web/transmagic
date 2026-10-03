@@ -223,7 +223,9 @@ export const PlacementService = {
       addY(0)
       addY(plan.vehicleWidth - width)
 
-      for (const zone of [...blocked, ...placed]) {
+      // Учитываем также вертикальные зоны (например, холодильник):
+      // даже если они не блокируют пол, их границы меняют допустимую полезную высоту.
+      for (const zone of [...blocked, ...verticalZones, ...placed]) {
         addX(zone.x)
         addX(zone.x + zone.length)
         addX(zone.x - length)
