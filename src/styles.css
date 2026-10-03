@@ -280,3 +280,10 @@
   .axle-mode-switch { grid-template-columns:1fr; }
   .axle-control-head { align-items:flex-start; flex-direction:column; gap:2px; }
 }
+
+.axle-drag-target { cursor: ew-resize; touch-action:none; user-select:none; }
+.axle-drag-target .axle-line { cursor: ew-resize; }
+.axle-drag-handle { fill:#ffffff; stroke:#58747b; stroke-width:10; }
+.axle-drag-target:hover .axle-drag-handle,
+.axle-dragging .axle-drag-handle { fill:#b7f35b; stroke:#3e6b33; }
+.axle-dragging .axle-line { stroke-width:28; }
