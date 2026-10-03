@@ -242,9 +242,27 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
     try {
       const plan = normalizePlanEquipment(await AssistantService.createDemo())
       const generatedVariants = PlacementService.createVariants(plan)
-      // Демо должно показывать именно заранее рассчитанную валидную 10/10 раскладку,
-      // а не сырую схему до оптимизации. Остальные варианты остаются альтернативами.
-      const variants = [plan, ...generatedVariants.slice(1)]
+      // Демо всегда сохраняет исходную проверенную 10/10 раскладку.
+      // Дополнительные варианты добавляем только если они тоже размещают
+      // столько же паллет и реально отличаются по схеме.
+      const baseCount = plan.pallets.length
+      const baseSignature = plan.pallets
+        .slice()
+        .sort((a, b) => a.id - b.id)
+        .map(p => [p.length, p.width, p.x, p.y].join(':'))
+        .join('|')
+      const alternatives = generatedVariants
+        .filter(variant => variant.pallets.length === baseCount)
+        .filter(variant => {
+          const signature = variant.pallets
+            .slice()
+            .sort((a, b) => a.id - b.id)
+            .map(p => [p.length, p.width, p.x, p.y].join(':'))
+            .join('|')
+          return signature !== baseSignature
+        })
+        .slice(0, 2)
+      const variants = [plan, ...alternatives]
       const calculations = await SolverService.summarize(plan)
       set({ plan, variants, selectedVariant: 0, calculations, isLoading: false, selectedPallet: plan.pallets[0]?.id ?? null, history: [], rotationFeedback: null })
     } catch { set({ isLoading: false, error: 'Не удалось построить демо-план' }) }
