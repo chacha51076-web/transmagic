@@ -190,7 +190,7 @@
 .truck-grid-major{opacity:.55;pointer-events:none}
 .dim-line line{stroke:#5e7479;stroke-width:7;stroke-dasharray:22 14}
 .dim-line text,.coord-label,.meter-scale text{font-family:'DM Mono',monospace;font-size:58px;fill:#496268;font-weight:600}
-.coord-label{font-size:48px;fill:#6c8186}
+.coord-label{font-size:52px;fill:#314f55;font-weight:800;paint-order:stroke;stroke:#fff;stroke-width:10}
 .meter-scale line{stroke:#7f9599;stroke-width:6}
 .meter-scale text{font-size:46px;fill:#71878b}
 
@@ -203,8 +203,8 @@
 .coordinate-system{z-index:20;font-family:'DM Mono',monospace;font-weight:800;fill:#203f46}
 .coordinate-system line{stroke:#203f46;stroke-width:14}
 .coordinate-system .axis-arrow{fill:#203f46}
-.coordinate-system text{font-size:68px;letter-spacing:1px;paint-order:stroke;stroke:#fff;stroke-width:10}
-.coordinate-system .orientation-label{font-size:56px;letter-spacing:2px}
+.coordinate-system text{font-size:82px;letter-spacing:2px;paint-order:stroke;stroke:#fff;stroke-width:14}
+.coordinate-system .orientation-label{font-size:64px;letter-spacing:2px}
 
 .status-calculated{color:#8a5a00;background:#fff4d6;border-color:#e7c66b}
 .dot.status-calculated{background:#d99a16}
