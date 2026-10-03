@@ -394,7 +394,7 @@ function PlanForm() {
           )}
         </div>
       </div>}
-      {watch('axleMode') === 'AUTO' && <small className="field-hint">Положение осей не известно. Используется ориентировочная модель для визуальной оценки центра массы. Для точной проверки выберите «Задать вручную».</small>}
+      {watch('axleMode') === 'AUTO' && <small className="field-hint">Положение осей не известно. Используется ориентировочная модель для визуальной оценки центра массы. На схеме оси можно сразу перетащить мышью или пальцем — после перемещения их положения станут ручными.</small>}
     </div>
     <div className="section-label cargo-label">Грузовые группы</div>
     <div className="cargo-groups">
@@ -508,11 +508,7 @@ function Visualizer() {
   }
 
   const beginAxleDrag = (event: PointerEvent<SVGGElement>, axleId: string, currentX: number) => {
-    const fixedMode = plan.axles.length >= 2 && plan.axles.every(axle => axle.source === 'FIXED')
-    if (!fixedMode) {
-      setAxleDrag(null)
-      return
-    }
+    if (plan.axles.length < 2) return
     const point = pointerToSvg(event)
     if (!point) return
     event.preventDefault()
@@ -632,7 +628,7 @@ function Visualizer() {
     return { index, placed, requested, cg, axleText }
   })
   return <main className="visualizer"><header className="visual-header"><div><span className="eyebrow">ПЛАН ЗАГРУЗКИ</span><h2>Кузов · {plan.vehicleLength} × {plan.vehicleWidth} × {plan.vehicleHeight} мм</h2></div><div className="header-stat"><b>{plan.pallets.length}/{plan.cargoGroups.reduce((sum, g) => sum + g.count, 0)}</b><span>паллет</span></div></header><section className="canvas-wrap"><div className="map-toolbar">
-  <span>{drag ? (drag.valid ? 'МОЖНО ПОСТАВИТЬ' : 'НЕЛЬЗЯ ПОСТАВИТЬ') : axleDrag ? 'ПЕРЕМЕЩЕНИЕ ОСИ' : (plan.axles.every(a => a.source === 'FIXED') ? 'ПЕРЕТАЩИТЕ ПАЛЛЕТУ ИЛИ ОСЬ' : 'ПЕРЕТАЩИТЕ ПАЛЛЕТУ МЫШЬЮ ИЛИ ПАЛЬЦЕМ')}</span>
+  <span>{drag ? (drag.valid ? 'МОЖНО ПОСТАВИТЬ' : 'НЕЛЬЗЯ ПОСТАВИТЬ') : axleDrag ? 'ПЕРЕМЕЩЕНИЕ ОСИ · ОТПУСТИТЕ ДЛЯ ФИКСАЦИИ' : 'ПЕРЕТАЩИТЕ ПАЛЛЕТУ ИЛИ ОСЬ МЫШЬЮ / ПАЛЬЦЕМ'}</span>
   <div className="map-actions">
     <button type="button" onClick={() => void undoLastMove()} disabled={history.length === 0}>↶ Отменить</button>
     <button type="button" onClick={() => void suggestVariant()} disabled={variants.length < 2}>💡 Предложить вариант</button>
@@ -658,7 +654,7 @@ function Visualizer() {
       const axleRole = loadGeometry.axlePositions.length === 2
         ? (axleNumber === 1 ? 'передняя' : 'задняя')
         : ''
-      const isDraggable = plan.axles.length >= 2 && plan.axles.every(a => a.source === 'FIXED')
+      const isDraggable = plan.axles.length >= 2
       const isDragging = axleDrag?.id === axle.id
       return <g
         key={axle.id}
