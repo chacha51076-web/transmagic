@@ -2,7 +2,7 @@ export type CheckStatus = 'CHECKED' | 'VIOLATION' | 'NOT_CHECKED' | 'CALCULATED'
 
 export interface Obstacle { id: string; x: number; y: number; length: number; width: number; label: string; weight?: number }
 export interface DoorGap { id: string; x: number; y: number; length: number; width: number; label: string }
-export interface Axle { id: string; position: number; capacityKg: number }
+export interface Axle { id: string; position: number; capacityKg: number; source?: 'AUTO' | 'FIXED' }
 export interface CargoGroup {
   id: string
   name: string
