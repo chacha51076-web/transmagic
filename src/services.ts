@@ -48,12 +48,15 @@ export const SolverService = {
       plan.unavailableZones.some(o => p.x < o.x + o.length && p.x + p.length > o.x && p.y < o.y + o.width && p.y + p.width > o.y) ||
       plan.pallets.slice(i + 1).some(q => intersects(p, q))
     )
+    const requestedCount = plan.cargoGroups.reduce((sum, group) => sum + group.count, 0)
+    const unplacedCount = Math.max(0, requestedCount - plan.pallets.length)
+    const placementViolation = geometryViolation || unplacedCount > 0
     const maxCargoHeight = plan.pallets.reduce((max, p) => Math.max(max, p.height), 0)
     const hasHeightData = plan.vehicleHeight > 0 && maxCargoHeight > 0
     const heightViolation = hasHeightData && maxCargoHeight > plan.vehicleHeight
     const heightValue = hasHeightData ? `${(maxCargoHeight / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} м / ${(plan.vehicleHeight / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} м` : '—'
     return [
-      { id: 'count', label: 'Размещение', value: geometryViolation ? 'Конфликт' : `${plan.pallets.length} / 10`, status: geometryViolation ? 'VIOLATION' : 'CHECKED', note: geometryViolation ? 'Есть выход за кузов или пересечение' : 'Все паллеты внутри кузова и не пересекаются' },
+      { id: 'count', label: 'Размещение', value: `${plan.pallets.length} / ${requestedCount}`, status: placementViolation ? 'VIOLATION' : 'CHECKED', note: geometryViolation ? 'Есть выход за кузов, пересечение или недоступную зону' : unplacedCount > 0 ? `Не размещено: ${unplacedCount} шт. Недостаточно свободного места` : 'Все паллеты внутри кузова и не пересекаются' },
       { id: 'weight', label: 'Вес груза', value: `${new Intl.NumberFormat('ru-RU').format(totalWeight)} кг`, status: 'CHECKED', note: 'Сумма введённых весов' },
       { id: 'axles', label: 'Нагрузка на оси', value: '—', status: 'NOT_CHECKED', note: 'Не проверена на этапе 1' },
       { id: 'height', label: 'Высота', value: heightValue, status: heightViolation ? 'VIOLATION' : hasHeightData ? 'CHECKED' : 'NOT_CHECKED', note: heightViolation ? 'Груз выше полезной высоты кузова' : hasHeightData ? 'Высота груза не превышает высоту кузова' : 'Нет данных для расчёта' },
