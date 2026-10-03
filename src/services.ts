@@ -17,7 +17,7 @@ export const AssistantService = {
       vehicleLength: 6000, vehicleWidth: 2050, vehicleHeight: 2200,
       payloadCapacityKg: undefined,
       doors: [{ id: 'rear', x: 0, y: 0, length: 230, width: 2050, label: 'Двери' }],
-      gaps: [], obstacles: [{ id: 'cooler', x: 5320, y: 410, length: 680, width: 1230, label: 'Холодильная установка', blocksFloor: false }],
+      gaps: [], obstacles: [{ id: 'cooler', x: 5320, y: 410, length: 680, width: 1230, height: 290, label: 'Холодильная установка', blocksFloor: false }],
       unavailableZones: [], axles: [{ id: 'axle-1', position: 4200, capacityKg: 0, source: 'AUTO' }, { id: 'axle-2', position: 5400, capacityKg: 0, source: 'AUTO' }],
       cargoGroups: [{ id: 'eur', name: 'EUR паллета', length: 1200, width: 800, height: 0, weight: 450, count: 10, rotatable: true, stackable: false }],
       pallets,
@@ -30,6 +30,19 @@ export type PlacementVariant = 'BALANCED' | 'REAR' | 'AXLE'
 export const PlacementService = {
   createVariants(plan: LoadPlan): LoadPlan[] {
     const blocked = [...plan.obstacles.filter(o => o.blocksFloor !== false), ...plan.unavailableZones, ...plan.gaps]
+    const verticalZones = plan.obstacles.filter(o => (o.height ?? 0) > 0)
+    const verticalClear = (candidate: { x: number; y: number; length: number; width: number; height: number }) => {
+      if (candidate.height <= 0) return true
+      if (candidate.height > plan.vehicleHeight) return false
+      return !verticalZones.some(zone => {
+        const overlapsFootprint =
+          candidate.x < zone.x + zone.length &&
+          candidate.x + candidate.length > zone.x &&
+          candidate.y < zone.y + zone.width &&
+          candidate.y + candidate.width > zone.y
+        return overlapsFootprint && candidate.height > plan.vehicleHeight - (zone.height ?? 0)
+      })
+    }
     const overlaps = (a: {x:number;y:number;length:number;width:number}, b: {x:number;y:number;length:number;width:number}) =>
       a.x < b.x + b.length && a.x + a.length > b.x && a.y < b.y + b.width && a.y + a.width > b.y
 
@@ -75,6 +88,7 @@ export const PlacementService = {
             } satisfies Pallet
 
             if (x < 0 || y < 0 || x + length > plan.vehicleLength || y + width > plan.vehicleWidth) continue
+            if (!verticalClear(candidate)) continue
             if (blocked.some(z => overlaps(candidate,z)) || placed.some(p => overlaps(candidate,p))) continue
 
             const cx = x + length / 2
@@ -180,6 +194,11 @@ export const SolverService = {
     const geometryViolation = plan.pallets.some((p, i) =>
       p.x < 0 || p.y < 0 || p.x + p.length > plan.vehicleLength || p.y + p.width > plan.vehicleWidth ||
       plan.obstacles.filter(o => o.blocksFloor !== false).some(o => p.x < o.x + o.length && p.x + p.length > o.x && p.y < o.y + o.width && p.y + p.width > o.y) ||
+      plan.obstacles.some(o => (o.height ?? 0) > 0 &&
+        p.height > plan.vehicleHeight - (o.height ?? 0) &&
+        p.x < o.x + o.length && p.x + p.length > o.x &&
+        p.y < o.y + o.width && p.y + p.width > o.y
+      ) ||
       plan.unavailableZones.some(o => p.x < o.x + o.length && p.x + p.length > o.x && p.y < o.y + o.width && p.y + p.width > o.y) ||
       plan.gaps.some(o => p.x < o.x + o.length && p.x + p.length > o.x && p.y < o.y + o.width && p.y + p.width > o.y) ||
       plan.pallets.slice(i + 1).some(q => intersects(p, q))
