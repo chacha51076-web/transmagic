@@ -25,17 +25,10 @@ export interface Pallet {
   rotatable: boolean
   stackable: boolean
 }
-export interface FixedCooler {
-  width: number
-  projection: number
-  height: number
-}
-
 export interface LoadPlan {
   vehicleLength: number
   vehicleWidth: number
   vehicleHeight: number
-  fixedCooler: FixedCooler
   payloadCapacityKg?: number
   doors: DoorGap[]
   gaps: DoorGap[]
