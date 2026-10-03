@@ -301,7 +301,7 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
     set({ isLoading: true, error: null })
     try {
       const plan = normalizePlanEquipment(await AssistantService.createDemo())
-      const generatedVariants = PlacementService.createVariants(plan)
+      const generatedVariants = await PlacementService.createVariants(plan)
       // Демо всегда сохраняет исходную проверенную 10/10 раскладку.
       // Дополнительные варианты добавляем только если они тоже размещают
       // столько же паллет и реально отличаются по схеме.
