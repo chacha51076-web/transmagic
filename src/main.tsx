@@ -131,12 +131,20 @@ function PlanForm() {
         const horizontalTouch = (bottom === p.y || y === p.y + p.width) && x < p.x + p.length && right > p.x
         return score + (verticalTouch ? 2 : 0) + (horizontalTouch ? 2 : 0)
       }, 0)
-      const targetCenter = (v.vehicleLength * 1000) / 2
+      const axleCount = Math.max(2, v.axleCount)
+      // Без введённых координат осей используем минимальную 2-осную
+      // модель: оси находятся в передней части кузова, а груз стараемся
+      // держать между ними. Это эвристика для планирования, а не расчёт
+      // фактических реакций на оси.
+      const assumedAxlePositions = axleCount === 2
+        ? [v.vehicleLength * 1000 * 0.70, v.vehicleLength * 1000 * 0.90]
+        : Array.from({ length: axleCount }, (_, i) => v.vehicleLength * 1000 * (0.60 + 0.30 * i / Math.max(1, axleCount - 1)))
+      const targetCenter = (assumedAxlePositions[0] + assumedAxlePositions[assumedAxlePositions.length - 1]) / 2
       const existingWeight = placed.reduce((sum, p) => sum + p.group.weight, 0)
       const existingMoment = placed.reduce((sum, p) => sum + p.group.weight * (p.x + p.length / 2), 0)
       const candidateCenter = x + length / 2
       const loadCenter = (existingMoment + weight * candidateCenter) / Math.max(1, existingWeight + weight)
-      const balancePenalty = Math.abs(loadCenter - targetCenter) * 900
+      const balancePenalty = Math.abs(loadCenter - targetCenter) * 1800
       // Баланс по длине кузова имеет больший приоритет, чем контакт с задней стенкой.
       return wallContact * 700000 + adjacent * 12000 - balancePenalty - y * 0.5 - x * 0.001
     }
