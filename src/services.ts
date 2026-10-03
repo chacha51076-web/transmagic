@@ -45,6 +45,7 @@ export const SolverService = {
     const geometryViolation = plan.pallets.some((p, i) =>
       p.x < 0 || p.y < 0 || p.x + p.length > plan.vehicleLength || p.y + p.width > plan.vehicleWidth ||
       plan.obstacles.some(o => p.x < o.x + o.length && p.x + p.length > o.x && p.y < o.y + o.width && p.y + p.width > o.y) ||
+      plan.unavailableZones.some(o => p.x < o.x + o.length && p.x + p.length > o.x && p.y < o.y + o.width && p.y + p.width > o.y) ||
       plan.pallets.slice(i + 1).some(q => intersects(p, q))
     )
     const maxCargoHeight = plan.pallets.reduce((max, p) => Math.max(max, p.height), 0)
