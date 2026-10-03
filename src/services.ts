@@ -204,14 +204,14 @@ export const SolverService = {
     const cgY = cgWeight > 0
       ? (plan.pallets.reduce((sum, p) => sum + p.weight * (p.y + p.width / 2), 0) + plan.obstacles.reduce((sum, o) => sum + (o.weight ?? 0) * (o.y + o.width / 2), 0)) / cgWeight
       : plan.vehicleWidth / 2
-    const axleLoads = axlePositions.length === 2 && cgWeight > 0
+    const axleLoads = !automaticAxleModel && axlePositions.length === 2 && cgWeight > 0
       ? [
           cgWeight * (axlePositions[1] - cgX) / (axlePositions[1] - axlePositions[0]),
           cgWeight * (cgX - axlePositions[0]) / (axlePositions[1] - axlePositions[0]),
         ]
       : []
     const axleLoadsValid = axleLoads.length === 2 && axleLoads.every(load => Number.isFinite(load) && load >= 0)
-    const cgBetweenAxles = axlePositions.length >= 2 && cgX >= axlePositions[0] && cgX <= axlePositions[axlePositions.length - 1]
+    const cgBetweenAxles = axlePositions.length >= 2 && cgX >= axlePositions[0] && cgX <= axlePositions[1]
     const transverseShift = Math.abs(cgY - plan.vehicleWidth / 2) / plan.vehicleWidth
     const transverseImbalance = transverseShift > 0.25
     const axleValue = axleLoadsValid
@@ -234,14 +234,12 @@ export const SolverService = {
     return [
       { id: 'count', label: 'Размещение', value: `${plan.pallets.length} / ${requestedCount}`, status: placementViolation ? 'VIOLATION' : 'CHECKED', note: geometryViolation ? 'Есть выход за кузов, пересечение или недоступную зону' : unplacedCount > 0 ? `Не размещено: ${unplacedCount} шт. Недостаточно свободного места` : 'Все паллеты внутри кузова и не пересекаются' },
       { id: 'weight', label: 'Вес груза', value: unplacedCount > 0 ? `${new Intl.NumberFormat('ru-RU').format(totalWeight)} / ${new Intl.NumberFormat('ru-RU').format(requestedWeight)} кг` : `${new Intl.NumberFormat('ru-RU').format(totalWeight)} кг`, status: 'CHECKED', note: unplacedCount > 0 ? `Размещено ${new Intl.NumberFormat('ru-RU').format(totalWeight)} кг из ${new Intl.NumberFormat('ru-RU').format(requestedWeight)} кг` : 'Сумма введённых весов' },
-      { id: 'axles', label: 'Нагрузка на оси', value: axleValue, status: axleCapacityViolation || !cgBetweenAxles || transverseImbalance ? 'VIOLATION' : axleLoadsValid ? 'CALCULATED' : 'NOT_CHECKED', note: axleCapacityViolation ? 'Расчётная нагрузка превышает введённую грузоподъёмность оси' : !cgBetweenAxles ? 'Центр массы находится вне базы осей — размещение требует перераспределения груза' : axleLoadsValid ? (
+      { id: 'axles', label: 'Нагрузка на оси', value: axleValue, status: automaticAxleModel ? 'NOT_CHECKED' : (axleCapacityViolation || !cgBetweenAxles || transverseImbalance ? 'VIOLATION' : axleLoadsValid ? 'CALCULATED' : 'NOT_CHECKED'), note: automaticAxleModel ? 'Положение осей задано автоматически и служит для визуальной оценки. Перетащите ось или задайте координаты вручную для точного расчёта.' : axleCapacityViolation ? 'Расчётная нагрузка превышает введённую грузоподъёмность оси' : !cgBetweenAxles ? 'Центр массы находится вне базы осей — перераспределите груз или измените положение осей' : axleLoadsValid ? (
           transverseImbalance
             ? '⚠ Центр массы заметно смещён поперёк кузова — оцените распределение по бортам'
-            : automaticAxleModel
-              ? 'Расчёт по автоматической модели осей; для точной проверки укажите положение осей'
-              : axlePositions.length > 2
-                ? 'Для 3+ осей на этапе 1 проверяется база и положение центра массы; нагрузка по каждой оси пока не рассчитывается'
-                : (axleCapacitiesKnown ? 'Расчётная нагрузка по указанным осям' : 'Расчёт по введённым положениям осей; допустимая нагрузка не указана')
+            : axlePositions.length > 2
+              ? 'Для 3+ осей на этапе 1 проверяется база и положение центра массы; нагрузка по каждой оси пока не рассчитывается'
+              : (axleCapacitiesKnown ? 'Расчётная нагрузка по указанным осям' : 'Расчёт по введённым положениям осей; допустимая нагрузка не указана')
         ) : axlePositions.length > 2
           ? 'Недостаточно данных для расчёта нагрузки по каждой оси'
           : 'Недостаточно данных для расчёта' },
