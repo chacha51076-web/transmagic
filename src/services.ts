@@ -56,8 +56,8 @@ export const PlacementService = {
         let bestScore = -Infinity
 
         for (const [length,width] of orientations) {
-          const xs = new Set<number>([0])
-          const ys = new Set<number>([0])
+          const xs = new Set<number>([0, Math.max(0, plan.vehicleLength - length)])
+          const ys = new Set<number>([0, Math.max(0, plan.vehicleWidth - width)])
           for (const p of [...placed,...blocked]) {
             xs.add(p.x); xs.add(p.x+p.length)
             ys.add(p.y); ys.add(p.y+p.width)
@@ -102,7 +102,7 @@ export const PlacementService = {
               group.length === 1200 && group.width === 800 &&
               length === 800 && width === 1200 &&
               width * 2 <= plan.vehicleWidth
-            const orientationBonus = eurRowOrientation ? 1500000 : 0
+            const orientationBonus = eurRowOrientation ? 400000 : 0
 
             // Strongly prefer the second pallet to use the opposite side
             // when a candidate keeps the resulting CG near the center.
@@ -114,16 +114,16 @@ export const PlacementService = {
             const oppositeSideBonus = placed.length > 0 && (
               (candidateSide === 'top' && placed.some(p => p.y + p.width / 2 >= targetY)) ||
               (candidateSide === 'bottom' && placed.some(p => p.y + p.width / 2 < targetY))
-            ) ? 900000 : 0
+            ) ? 250000 : 0
 
             const score =
               orientationBonus +
               oppositeSideBonus +
-              wall * (mode === 'REAR' ? 30000 : 8000) +
+              wall * (mode === 'REAR' ? 3000 : 1000) +
               compact * 6000 +
               sideDiversity * 1000 -
               longitudinalPenalty * (mode === 'AXLE' ? 26000 : 18000) -
-              transversePenalty * 50000 -
+              transversePenalty * 80000 -
               x * (mode === 'REAR' ? 10 : 1)
 
             if (score > bestScore) {
