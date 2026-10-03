@@ -518,24 +518,12 @@ function Visualizer() {
     const handleUp = async (event: globalThis.PointerEvent) => {
       const current = axleDrag
       if (!current) return
-      const svg = svgRef.current
-      const matrix = svg?.getScreenCTM()
-      let x = current.x
-      if (svg && matrix) {
-        const point = svg.createSVGPoint()
-        point.x = event.clientX
-        point.y = 0
-        const svgPoint = point.matrixTransform(matrix.inverse())
-        const axles = plan.axles.slice().sort((a, b) => a.position - b.position)
-        const currentIndex = axles.findIndex(axle => axle.id === current.id)
-        if (currentIndex >= 0) {
-          const minGap = 500
-          const minX = currentIndex > 0 ? axles[currentIndex - 1].position + minGap : 0
-          const maxX = currentIndex < axles.length - 1 ? axles[currentIndex + 1].position - minGap : plan.vehicleLength
-          x = Math.max(minX, Math.min(maxX, Math.round(svgPoint.x / 50) * 50))
-        }
-      }
-      if (Math.abs(x - current.originalX) >= 50) {
+      event.preventDefault()
+      // На отпускании сохраняем последнее положение, которое уже было
+      // показано во время pointermove. Повторный пересчёт по координате pointerup
+      // мог вернуть ось назад при резком отпускании/потере последнего move-события.
+      const x = current.x
+      if (event.type !== 'pointercancel' && Math.abs(x - current.originalX) >= 50) {
         await moveAxlePosition(current.id, x)
       }
       setAxleDrag(null)
@@ -602,19 +590,6 @@ function Visualizer() {
     try { event.currentTarget.setPointerCapture(event.pointerId) } catch {}
     setAxleDrag({ id: axleId, originalX: currentX, x: currentX })
   }
-
-  const calculateDraggedAxleX = (clientX: number, axleId: string) => {
-    const point = clientToSvg(clientX, 0)
-    if (!point) return null
-    const axles = plan.axles.slice().sort((a, b) => a.position - b.position)
-    const currentIndex = axles.findIndex(axle => axle.id === axleId)
-    if (currentIndex < 0) return null
-    const minGap = 500
-    const minX = currentIndex > 0 ? axles[currentIndex - 1].position + minGap : 0
-    const maxX = currentIndex < axles.length - 1 ? axles[currentIndex + 1].position - minGap : plan.vehicleLength
-    return Math.max(minX, Math.min(maxX, Math.round(point.x / 50) * 50))
-  }
-
 
   const beginDrag = (event: ReactPointerEvent<SVGGElement>, palletId: number) => {
     if (event.button !== 0 && event.pointerType !== "touch") return
