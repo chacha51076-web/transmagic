@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -101,11 +101,36 @@ function PlanForm() {
     }
     void setPlan(plan)
   }
-  const speak = async () => {
+  const recognitionRef = useRef<any>(null)
+  const speak = () => {
+    if (!SpeechService.isSupported()) {
+      setRecognized('Голосовой ввод не поддерживается этим браузером. Откройте Chrome или Edge и разрешите доступ к микрофону.')
+      return
+    }
+    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    const recognition = new SpeechRecognitionCtor()
+    recognition.lang = 'ru-RU'
+    recognition.continuous = false
+    recognition.interimResults = true
+    recognition.onresult = (event: any) => {
+      const text = Array.from(event.results).map((r: any) => r[0]?.transcript ?? '').join(' ')
+      setRecognized(text)
+    }
+    recognition.onerror = (event: any) => {
+      setListening(false)
+      setRecognized(event.error === 'not-allowed' ? 'Нет доступа к микрофону. Разрешите микрофон для localhost.' : 'Не удалось распознать речь. Попробуйте ещё раз.')
+    }
+    recognition.onend = () => setListening(false)
+    recognitionRef.current = recognition
+    setRecognized('')
     setListening(true)
-    try { setRecognized(await SpeechService.listen()) } finally { setListening(false) }
+    recognition.start()
   }
-  const cancelSpeech = () => setListening(false)
+  const cancelSpeech = () => {
+    recognitionRef.current?.abort()
+    recognitionRef.current = null
+    setListening(false)
+  }
   const applyPreset = (i: number) => {
     setPreset(i)
     if (presets[i][1]) { setValue('cargoLength', presets[i][1]); setValue('cargoWidth', presets[i][2]) }
@@ -126,7 +151,7 @@ function PlanForm() {
     {recognized && <div className="recognized">Распознано: <b>{recognized}</b><button type="button" onClick={() => setRecognized('')}>×</button></div>}
     <button type="submit" className="primary-button">Построить план <span>→</span></button>
     <div className="voice-actions">
-      <button type="button" onClick={() => void speak()} className="voice-button">{listening ? '● Слушаю…' : '⌁ Описать голосом'}</button>
+      <button type="button" onClick={speak} disabled={listening} className="voice-button">{listening ? '● Слушаю…' : '⌁ Описать голосом'}</button>
       {listening && <button type="button" onClick={cancelSpeech} className="voice-cancel">Отмена</button>}
     </div>
   </form>
@@ -141,7 +166,7 @@ function Visualizer() {
   const { plan, calculations, selectedPallet, setSelectedPallet } = useLoadPlanStore()
   if (!plan) return <main className="visualizer empty"><div className="empty-art">▱ ▱</div><h2>Схема загрузки появится здесь</h2><p>Нажмите «Попробовать пример» или заполните параметры вручную.</p></main>
   const selected = plan.pallets.find(p => p.id === selectedPallet)
-  return <main className="visualizer"><header className="visual-header"><div><span className="eyebrow">ПЛАН ЗАГРУЗКИ</span><h2>Кузов · {plan.vehicleLength} × {plan.vehicleWidth} × {plan.vehicleHeight} мм</h2></div><div className="header-stat"><b>{plan.pallets.length}/10</b><span>паллет</span></div></header><section className="canvas-wrap"><svg viewBox="-500 -280 7000 2800" role="img" aria-label="Вид сверху на кузов с паллетами" className="truck-svg"><defs><pattern id="grid" width="100" height="100" patternUnits="userSpaceOnUse"><path d="M 100 0 L 0 0 0 100" fill="none" stroke="#dbe5ea" strokeWidth="5" /></pattern></defs><text x="3000" y="-135" textAnchor="middle" className="dimension">6 000 мм</text><path d="M0 -80h6000" className="dimension-line" /><text x="-330" y="1100" textAnchor="middle" transform="rotate(-90 -330 1100)" className="dimension">2 050 мм</text><rect x="0" y="0" width="6000" height="2050" rx="28" fill="url(#grid)" className="truck-body" /><rect x="0" y="0" width="230" height="2050" fill="#d9e4e8" /><path d="M0 150h140 M0 1900h140" className="door" /><text x="115" y="1030" transform="rotate(-90 115 1030)" className="door-label">ДВЕРИ</text>{plan.obstacles.map(o => <g key={o.id}><rect x={o.x} y={o.y} width={o.length} height={o.width} rx="24" className="obstacle" /><text x={o.x + o.length / 2} y={o.y + o.width / 2} textAnchor="middle" className="obstacle-label">{o.label}</text></g>)}{plan.pallets.map(p => <g key={p.id} onClick={() => setSelectedPallet(p.id)} className="pallet-group"><rect x={p.x} y={p.y} width={p.length} height={p.width} rx="18" className={selectedPallet === p.id ? 'pallet selected' : 'pallet'} /><text x={p.x + p.length / 2} y={p.y + p.width / 2 + 70} textAnchor="middle" className="pallet-number">{p.id}</text></g>)}</svg></section><section className="bottom-info"><div className="selected-card"><span className="mini-pallet">▦</span><div><span className="eyebrow">ВЫБРАНА ПАЛЛЕТА</span><b>EUR #{selected?.id} <small>· {selected?.weight} кг</small></b></div></div><div className="summary"><span className="summary-title">ПРОВЕРКИ · ЭТАП 1</span>{calculations.map(c => <div className="check" key={c.id}><span className={`dot ${statusClass[c.status]}`} /><div><b>{c.label}</b><small>{c.note}</small></div><strong>{c.value}</strong><em className={statusClass[c.status]}>{statusText[c.status]}</em></div>)}</div></section><div className="mode-note">2D схема · 3D — скоро</div></main>
+  return <main className="visualizer"><header className="visual-header"><div><span className="eyebrow">ПЛАН ЗАГРУЗКИ</span><h2>Кузов · {plan.vehicleLength} × {plan.vehicleWidth} × {plan.vehicleHeight} мм</h2></div><div className="header-stat"><b>{plan.pallets.length}/{plan.cargoGroups.reduce((sum, g) => sum + g.count, 0)}</b><span>паллет</span></div></header><section className="canvas-wrap"><svg viewBox={`-500 -280 ${plan.vehicleLength + 1000} ${plan.vehicleWidth + 750}`} role="img" aria-label="Вид сверху на кузов с паллетами" className="truck-svg"><defs><pattern id="grid" width="100" height="100" patternUnits="userSpaceOnUse"><path d="M 100 0 L 0 0 0 100" fill="none" stroke="#dbe5ea" strokeWidth="5" /></pattern></defs><text x={plan.vehicleLength / 2} y="-135" textAnchor="middle" className="dimension">{plan.vehicleLength.toLocaleString('ru-RU')} мм</text><path d={`M0 -80h${plan.vehicleLength}`} className="dimension-line" /><text x="-330" y={plan.vehicleWidth / 2} textAnchor="middle" transform={`rotate(-90 -330 ${plan.vehicleWidth / 2})`} className="dimension">{plan.vehicleWidth.toLocaleString('ru-RU')} мм</text><rect x="0" y="0" width={plan.vehicleLength} height={plan.vehicleWidth} rx="28" fill="url(#grid)" className="truck-body" /><rect x="0" y="0" width={plan.doors[0]?.length ?? 0} height={plan.vehicleWidth} fill="#d9e4e8" /><path d={`M0 150h140 M0 ${Math.max(150, plan.vehicleWidth - 150)}h140`} className="door" /><text x={(plan.doors[0]?.length ?? 0) / 2} y={plan.vehicleWidth / 2} textAnchor="middle" transform={`rotate(-90 ${(plan.doors[0]?.length ?? 0) / 2} ${plan.vehicleWidth / 2})`} className="door-label">ДВЕРИ</text>{plan.obstacles.map(o => <g key={o.id}><rect x={o.x} y={o.y} width={o.length} height={o.width} rx="24" className="obstacle" /><text x={o.x + o.length / 2} y={o.y + o.width / 2} textAnchor="middle" className="obstacle-label">{o.label}</text></g>)}{plan.pallets.map(p => <g key={p.id} onClick={() => setSelectedPallet(p.id)} className="pallet-group"><rect x={p.x} y={p.y} width={p.length} height={p.width} rx="18" className={selectedPallet === p.id ? 'pallet selected' : 'pallet'} /><text x={p.x + p.length / 2} y={p.y + p.width / 2 + 70} textAnchor="middle" className="pallet-number">{p.id}</text></g>)}</svg></section><section className="bottom-info"><div className="selected-card"><span className="mini-pallet">▦</span><div><span className="eyebrow">ВЫБРАНА ПАЛЛЕТА</span><b>EUR #{selected?.id} <small>· {selected?.weight} кг</small></b></div></div><div className="summary"><span className="summary-title">ПРОВЕРКИ · ЭТАП 1</span>{calculations.map(c => <div className="check" key={c.id}><span className={`dot ${statusClass[c.status]}`} /><div><b>{c.label}</b><small>{c.note}</small></div><strong>{c.value}</strong><em className={statusClass[c.status]}>{statusText[c.status]}</em></div>)}</div></section><div className="mode-note">2D схема · 3D — скоро</div></main>
 }
 
 function App() {
