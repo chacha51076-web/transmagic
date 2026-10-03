@@ -324,6 +324,7 @@ export interface VehicleFitSuggestion {
   currentWidth: number
   lengthAtCurrentWidth: number | null
   widthAtCurrentLength: number | null
+  minimumHeight: number | null
   note: string
 }
 
@@ -367,12 +368,20 @@ export const findMinimumVehicleSize = (plan: LoadPlan): VehicleFitSuggestion | n
     }
   }
 
+  const minimumHeight = maxCargoLength > 0
+    ? Math.max(...plan.cargoGroups.map(group => group.height))
+    : 0
+  const heightProblem = minimumHeight > plan.vehicleHeight
+
   return {
     currentLength: plan.vehicleLength,
     currentWidth: plan.vehicleWidth,
-    lengthAtCurrentWidth,
-    widthAtCurrentLength,
-    note: 'Ориентировочная минимальная геометрия. Расчёт ищет первый кузов с шагом 100 мм, в который помещается всё заданное количество груза по текущим правилам размещения.',
+    lengthAtCurrentWidth: heightProblem ? null : lengthAtCurrentWidth,
+    widthAtCurrentLength: heightProblem ? null : widthAtCurrentLength,
+    minimumHeight: heightProblem ? minimumHeight : null,
+    note: heightProblem
+      ? 'Увеличение длины или ширины не решит проблему: часть груза выше полезной высоты кузова.'
+      : 'Ориентировочная минимальная геометрия. Поиск идёт с шагом 100 мм и использует те же ограничения размещения, что и планировщик.',
   }
 }
 
