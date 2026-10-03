@@ -109,6 +109,7 @@ export const PlacementService = {
   createVariants(plan: LoadPlan): LoadPlan[] {
     plan = normalizeFixedEquipment(plan)
 
+    const step = 50
     const blocked = [
       ...plan.obstacles.filter(o => o.blocksFloor !== false),
       ...plan.unavailableZones,
@@ -125,16 +126,18 @@ export const PlacementService = {
       a.y < b.y + b.width &&
       a.y + a.width > b.y
 
+    const snap = (value: number) => Math.max(0, Math.round(value / step) * step)
+
     const verticalClear = (candidate: { x: number; y: number; length: number; width: number; height: number }) => {
       if (candidate.height <= 0) return true
       if (candidate.height > plan.vehicleHeight) return false
       return !verticalZones.some(zone => {
-        const overlap =
+        const footprintOverlap =
           candidate.x < zone.x + zone.length &&
           candidate.x + candidate.length > zone.x &&
           candidate.y < zone.y + zone.width &&
           candidate.y + candidate.width > zone.y
-        return overlap && candidate.height > plan.vehicleHeight - (zone.height ?? 0)
+        return footprintOverlap && candidate.height > plan.vehicleHeight - (zone.height ?? 0)
       })
     }
 
@@ -154,19 +157,24 @@ export const PlacementService = {
       .sort((a, b) => {
         const byArea = b.group.length * b.group.width - a.group.length * a.group.width
         if (byArea !== 0) return byArea
-        const byWeight = b.group.weight - a.group.weight
-        if (byWeight !== 0) return byWeight
-        return b.group.height - a.group.height
+        const byHeight = b.group.height - a.group.height
+        if (byHeight !== 0) return byHeight
+        return b.group.weight - a.group.weight
       })
 
-    const orientationPairs = (group: typeof items[number]['group'], reverse = false) => {
-      const normal: Array<[number, number]> = [[group.length, group.width]]
-      if (group.rotatable && group.length !== group.width) normal.push([group.width, group.length])
-      return reverse ? normal.reverse() : normal
+    if (items.length === 0) return [{ ...plan, pallets: [] }]
+
+    type PlacementItem = typeof items[number]
+    type SearchState = { pallets: Pallet[]; skipped: number }
+
+    const orientationPairs = (group: PlacementItem['group']) => {
+      const pairs: Array<[number, number]> = [[group.length, group.width]]
+      if (group.rotatable && group.length !== group.width) pairs.push([group.width, group.length])
+      return pairs
     }
 
     const makeCandidate = (
-      item: typeof items[number],
+      item: PlacementItem,
       length: number,
       width: number,
       x: number,
@@ -179,238 +187,184 @@ export const PlacementService = {
         width,
         height: item.group.height,
         weight: item.group.weight,
-        x,
-        y,
+        x: snap(x),
+        y: snap(y),
         rotatable: item.group.rotatable,
         stackable: false,
       }
       return canPlace(candidate, placed) ? candidate : null
     }
 
-    const shelfLevels = (placed: Pallet[]) => {
-      const levels = new Set<number>([0, Math.max(0, plan.vehicleWidth - 50)])
-      for (const item of placed) {
-        levels.add(item.y)
-        levels.add(item.y + item.width)
-      }
-      // A 50 mm scan closes small packing gaps that can otherwise leave
-      // the solver with a poor partial solution.
-      for (let y = 0; y <= plan.vehicleWidth; y += 50) levels.add(y)
-      return [...levels]
-        .filter(y => y >= 0 && y < plan.vehicleWidth)
-        .sort((a, b) => a - b)
-    }
+    const buildAnchors = (item: PlacementItem, length: number, width: number, placed: Pallet[]) => {
+      const xAnchors = new Set<number>([
+        0,
+        plan.vehicleLength - length,
+        (plan.vehicleLength - length) / 2,
+      ])
+      const yAnchors = new Set<number>([
+        0,
+        plan.vehicleWidth - width,
+        (plan.vehicleWidth - width) / 2,
+      ])
 
-    const columnLevels = (placed: Pallet[]) => {
-      const levels = new Set<number>([0, Math.max(0, plan.vehicleLength - 50)])
-      for (const item of placed) {
-        levels.add(item.x)
-        levels.add(item.x + item.length)
-      }
-      for (let x = 0; x <= plan.vehicleLength; x += 50) levels.add(x)
-      return [...levels]
-        .filter(x => x >= 0 && x < plan.vehicleLength)
-        .sort((a, b) => a - b)
-    }
-
-    const buildShelf = (reverseRows: boolean, reverseOrientation: boolean) => {
-      const placed: Pallet[] = []
-
-      for (const item of items) {
-        let best: Pallet | null = null
-        let bestMetric = Number.POSITIVE_INFINITY
-
-        for (const [length, width] of orientationPairs(item.group, reverseOrientation)) {
-          const ys = shelfLevels(placed)
-          if (reverseRows) ys.reverse()
-
-          // Prefer a compact set of shelves that actually maximizes
-          // the number of rows across the body. A single centered shelf can
-          // leave too little room above and below it, which would miss valid
-          // layouts such as 2 x 5 EUR pallets in a 2.05 m body.
-          const rowCount = Math.max(1, Math.floor((plan.vehicleWidth + 0.001) / width))
-          const rowStart = Math.max(0, (plan.vehicleWidth - rowCount * width) / 2)
-          const preferredYs = Array.from(
-            { length: rowCount },
-            (_, index) => rowStart + index * width,
-          )
-
-          const preferredSet = new Set(preferredYs.map(value => value.toFixed(3)))
-          const fallbackYs = ys.filter(value => !preferredSet.has(value.toFixed(3)))
-          const orderedYs = reverseRows
-            ? [...preferredYs.slice().reverse(), ...fallbackYs.reverse()]
-            : [...preferredYs, ...fallbackYs]
-
-          for (const y of orderedYs) {
-            if (y + width > plan.vehicleWidth) continue
-
-            // Search from the rear doors forward. At each shelf we choose
-            // the leftmost feasible placement; this maximizes the number
-            // of pallets before any longitudinal balance optimization.
-            for (let x = 0; x + length <= plan.vehicleLength; x += 50) {
-              const candidate = makeCandidate(item, length, width, x, y, placed)
-              if (!candidate) continue
-
-              const metric = y * 100000 + x
-              if (metric < bestMetric) {
-                best = candidate
-                bestMetric = metric
-              }
-
-              // For each row, the first valid x is the preferred one.
-              break
-            }
-
-            if (best) break
-          }
-          if (best) break
-        }
-
-        if (best) placed.push(best)
+      const referenceZones = [...blocked, ...verticalZones, ...placed]
+      for (const zone of referenceZones) {
+        xAnchors.add(zone.x - length)
+        xAnchors.add(zone.x + zone.length)
+        xAnchors.add(zone.x + zone.length / 2 - length / 2)
+        yAnchors.add(zone.y - width)
+        yAnchors.add(zone.y + zone.width)
+        yAnchors.add(zone.y + zone.width / 2 - width / 2)
       }
 
-      return placed
+      const xs = [...xAnchors]
+        .map(snap)
+        .filter(x => x >= 0 && x + length <= plan.vehicleLength)
+      const ys = [...yAnchors]
+        .map(snap)
+        .filter(y => y >= 0 && y + width <= plan.vehicleWidth)
+
+      return { xs: [...new Set(xs)], ys: [...new Set(ys)] }
     }
 
-    const buildColumns = (reverseColumns: boolean, reverseOrientation: boolean) => {
-      const placed: Pallet[] = []
+    const placementScore = (candidate: Pallet, placed: Pallet[]) => {
+      const centerY = candidate.y + candidate.width / 2
+      const bodyCenterY = plan.vehicleWidth / 2
+      const transverse = Math.abs(centerY - bodyCenterY) / Math.max(1, plan.vehicleWidth)
+      const touches = [...placed, ...blocked].reduce((score, other) => {
+        const verticalTouch =
+          (candidate.x + candidate.length === other.x || candidate.x === other.x + other.length) &&
+          candidate.y < other.y + other.width && candidate.y + candidate.width > other.y
+        const horizontalTouch =
+          (candidate.y + candidate.width === other.y || candidate.y === other.y + other.width) &&
+          candidate.x < other.x + other.length && candidate.x + candidate.length > other.x
+        return score + (verticalTouch ? 2 : 0) + (horizontalTouch ? 2 : 0)
+      }, 0)
+      const axlePositions = plan.axles
+        .slice()
+        .sort((a, b) => a.position - b.position)
+        .map(axle => axle.position)
+      const axleTarget = axlePositions.length >= 2
+        ? (axlePositions[0] + axlePositions[axlePositions.length - 1]) / 2
+        : plan.vehicleLength / 2
+      const longitudinal = Math.abs(candidate.x + candidate.length / 2 - axleTarget) / Math.max(1, plan.vehicleLength)
+      return touches * 20 - transverse * 45 - longitudinal * 15
+    }
 
-      for (const item of items) {
-        let best: Pallet | null = null
-        let bestMetric = Number.POSITIVE_INFINITY
+    const stateScore = (state: SearchState) => {
+      if (state.pallets.length === 0) return 0
+      const totalWeight = state.pallets.reduce((sum, pallet) => sum + pallet.weight, 0) +
+        plan.obstacles.reduce((sum, obstacle) => sum + (obstacle.weight ?? 0), 0)
+      const cgX = totalWeight > 0
+        ? state.pallets.reduce((sum, pallet) => sum + pallet.weight * (pallet.x + pallet.length / 2), 0) / totalWeight
+        : plan.vehicleLength / 2
+      const cgY = totalWeight > 0
+        ? state.pallets.reduce((sum, pallet) => sum + pallet.weight * (pallet.y + pallet.width / 2), 0) / totalWeight
+        : plan.vehicleWidth / 2
+      const axlePositions = plan.axles.slice().sort((a, b) => a.position - b.position).map(axle => axle.position)
+      const axleTarget = axlePositions.length >= 2
+        ? (axlePositions[0] + axlePositions[axlePositions.length - 1]) / 2
+        : plan.vehicleLength / 2
+      const transversePenalty = Math.abs(cgY - plan.vehicleWidth / 2) / Math.max(1, plan.vehicleWidth)
+      const longitudinalPenalty = Math.abs(cgX - axleTarget) / Math.max(1, plan.vehicleLength)
+      const adjacentPairs = state.pallets.reduce((score, pallet, index) => {
+        return score + state.pallets.slice(0, index).filter(other =>
+          (pallet.x + pallet.length === other.x || pallet.x === other.x + other.length) &&
+          pallet.y < other.y + other.width && pallet.y + pallet.width > other.y ||
+          (pallet.y + pallet.width === other.y || pallet.y === other.y + other.width) &&
+          pallet.x < other.x + other.length && pallet.x + pallet.length > other.x
+        ).length
+      }, 0)
+      return adjacentPairs * 8 - transversePenalty * 60 - longitudinalPenalty * 25 - state.skipped * 30
+    }
 
-        for (const [length, width] of orientationPairs(item.group, reverseOrientation)) {
-          const xs = columnLevels(placed)
-          if (reverseColumns) xs.reverse()
+    const signature = (pallets: Pallet[]) => pallets
+      .map(pallet => [pallet.x, pallet.y, pallet.length, pallet.width].join(':'))
+      .sort()
+      .join('|')
+
+    const diversityDistance = (a: Pallet[], b: Pallet[]) => {
+      const left = new Set(signature(a).split('|'))
+      const right = new Set(signature(b).split('|'))
+      let difference = 0
+      for (const item of left) if (!right.has(item)) difference += 1
+      for (const item of right) if (!left.has(item)) difference += 1
+      return difference
+    }
+
+    const beamWidth = 180
+    let beam: SearchState[] = [{ pallets: [], skipped: 0 }]
+
+    for (const item of items) {
+      const expanded: SearchState[] = []
+
+      for (const state of beam) {
+        const orientations = orientationPairs(item.group)
+        for (const [length, width] of orientations) {
+          const { xs, ys } = buildAnchors(item, length, width, state.pallets)
+          const candidates: Array<{ pallet: Pallet; score: number }> = []
 
           for (const x of xs) {
-            if (x + length > plan.vehicleLength) continue
-
-            const targetY = Math.max(0, (plan.vehicleWidth - width) / 2)
-            const ys = []
-            for (let y = 0; y + width <= plan.vehicleWidth; y += 50) ys.push(y)
-            ys.sort((a, b) => {
-              const da = Math.abs(a - targetY)
-              const db = Math.abs(b - targetY)
-              if (da !== db) return da - db
-              return a - b
-            })
-
             for (const y of ys) {
-              const candidate = makeCandidate(item, length, width, x, y, placed)
+              const candidate = makeCandidate(item, length, width, x, y, state.pallets)
               if (!candidate) continue
-              const metric = x * 100000 + y
-              if (metric < bestMetric) {
-                best = candidate
-                bestMetric = metric
-              }
-              break
+              candidates.push({ pallet: candidate, score: placementScore(candidate, state.pallets) })
             }
-            if (best) break
           }
-          if (best) break
+
+          candidates.sort((a, b) => b.score - a.score)
+          for (const candidate of candidates.slice(0, 18)) {
+            expanded.push({
+              pallets: [...state.pallets, candidate.pallet],
+              skipped: state.skipped,
+            })
+          }
         }
 
-        if (best) placed.push(best)
+        // Keep a skip branch so mixed cargo groups can route around a difficult item.
+        expanded.push({ pallets: state.pallets, skipped: state.skipped + 1 })
       }
 
-      return placed
-    }
+      const uniqueStates = new Map<string, SearchState>()
+      for (const state of expanded) {
+        const key = `${state.skipped}|${signature(state.pallets)}`
+        const previous = uniqueStates.get(key)
+        if (!previous || stateScore(state) > stateScore(previous)) uniqueStates.set(key, state)
+      }
 
-    // For homogeneous pallet groups, explicitly test mixed-orientation rows.
-    // This is important for Euro pallets in a ~2 m body: one 800 mm row plus
-    // one 1200 mm rotated row can use the width much better than two identical rows.
-    const firstGroup = items[0]?.group
-    const homogeneous = Boolean(firstGroup) && items.every(
-      item =>
-        item.group.length === firstGroup?.length &&
-        item.group.width === firstGroup?.width &&
-        item.group.height === firstGroup?.height,
-    )
-
-    const buildRowPattern = (pattern: Array<'normal' | 'rotated'>) => {
-      if (!homogeneous || !firstGroup) return []
-
-      const rows = pattern.map(mode => {
-        const [length, width] =
-          mode === 'rotated' && firstGroup.rotatable && firstGroup.length !== firstGroup.width
-            ? [firstGroup.width, firstGroup.length]
-            : [firstGroup.length, firstGroup.width]
-        return { mode, length, width, y: 0 }
+      const ranked = [...uniqueStates.values()].sort((a, b) => {
+        if (b.pallets.length !== a.pallets.length) return b.pallets.length - a.pallets.length
+        return stateScore(b) - stateScore(a)
       })
-
-      const totalWidth = rows.reduce((sum, row) => sum + row.width, 0)
-      if (totalWidth > plan.vehicleWidth + 0.001) return []
-
-      const startY = Math.max(0, (plan.vehicleWidth - totalWidth) / 2)
-      let cursorY = startY
-      for (const row of rows) {
-        row.y = cursorY
-        cursorY += row.width
-      }
-
-      const placed: Pallet[] = []
-      for (const item of items) {
-        let placedThisItem = false
-
-        for (const row of rows) {
-          const rotated = row.mode === 'rotated' && item.group.rotatable && item.group.length !== item.group.width
-          const length = rotated ? item.group.width : item.group.length
-          const width = rotated ? item.group.length : item.group.width
-
-          for (let x = 0; x + length <= plan.vehicleLength; x += 50) {
-            const candidate = makeCandidate(item, length, width, x, row.y, placed)
-            if (!candidate) continue
-            placed.push(candidate)
-            placedThisItem = true
-            break
-          }
-
-          if (placedThisItem) break
-        }
-      }
-
-      return placed
+      const reserve = ranked.filter(state => state.pallets.length < (ranked[0]?.pallets.length ?? 0)).slice(0, 20)
+      beam = [...ranked.filter(state => state.pallets.length === (ranked[0]?.pallets.length ?? 0)).slice(0, beamWidth - reserve.length), ...reserve]
     }
 
-    const variants = [
-      ...(homogeneous
-        ? [
-            buildRowPattern(['normal', 'rotated']),
-            buildRowPattern(['rotated', 'normal']),
-            buildRowPattern(['normal', 'normal']),
-            buildRowPattern(['rotated', 'rotated']),
-          ]
-        : []),
-      buildShelf(false, false),
-      buildShelf(true, false),
-      buildColumns(false, true),
-      buildColumns(true, false),
-    ]
+    const maxPlaced = Math.max(...beam.map(state => state.pallets.length), 0)
+    const bestStates = beam
+      .filter(state => state.pallets.length === maxPlaced)
+      .sort((a, b) => stateScore(b) - stateScore(a))
 
-    // The requested quantity is a hard requirement for the planner.
-    // We never prefer a prettier partial plan over a plan that fits more
-    // of the requested cargo. First maximize count, then keep distinct
-    // layouts among those maximum-count results.
-    const maxPlaced = Math.max(...variants.map(variant => variant.length), 0)
-    const unique = new Map<string, Pallet[]>()
-
-    for (const pallets of variants.filter(variant => variant.length === maxPlaced)) {
-      const normalized = pallets.map((p, index) => ({ ...p, id: index + 1 }))
-      const signature = normalized
-        .map(p => [p.length, p.width, p.x, p.y].join(':'))
-        .sort()
-        .join('|')
-      if (!unique.has(signature)) unique.set(signature, normalized)
+    const selected: SearchState[] = []
+    for (const state of bestStates) {
+      if (selected.length === 0 || selected.every(other => diversityDistance(other.pallets, state.pallets) >= Math.max(2, Math.ceil(maxPlaced * 0.25)))) {
+        selected.push(state)
+      }
+      if (selected.length >= 3) break
+    }
+    if (selected.length < 3) {
+      for (const state of bestStates) {
+        if (!selected.some(other => signature(other.pallets) === signature(state.pallets))) selected.push(state)
+        if (selected.length >= 3) break
+      }
     }
 
-    return [...unique.values()].slice(0, 3).map(pallets => ({
+    return selected.map(state => ({
       ...plan,
-      pallets,
+      pallets: state.pallets.map((pallet, index) => ({ ...pallet, id: index + 1 })),
     }))
-  }
+  },
 }
-
 export interface VehicleFitSuggestion {
   currentLength: number
   currentWidth: number
