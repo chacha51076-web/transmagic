@@ -289,27 +289,18 @@ export const SolverService = {
     const hasHeightData = plan.vehicleHeight > 0 && maxCargoHeight > 0
 
     // Расчётный центр тяжести и распределение веса по осевой базе.
-    // Для старых планов без осей оставляем резервную автоматическую модель.
+    const staticLoad = calculateStaticLoad(plan)
     const sortedPlanAxles = plan.axles.slice().sort((a, b) => a.position - b.position)
-    const axlePositions = sortedPlanAxles.length >= 2
-      ? sortedPlanAxles.map(a => a.position)
+    const axlePositions = staticLoad.axlePositions.length >= 2
+      ? staticLoad.axlePositions
       : [plan.vehicleLength * 0.70, plan.vehicleLength * 0.90]
     const automaticAxleModel = sortedPlanAxles.length < 2 || sortedPlanAxles.some(a => a.source === 'AUTO')
-    const cgWeight = totalWeight
-    const cgX = cgWeight > 0
-      ? (plan.pallets.reduce((sum, p) => sum + p.weight * (p.x + p.length / 2), 0) + plan.obstacles.reduce((sum, o) => sum + (o.weight ?? 0) * (o.x + o.length / 2), 0)) / cgWeight
-      : plan.vehicleLength / 2
-    const cgY = cgWeight > 0
-      ? (plan.pallets.reduce((sum, p) => sum + p.weight * (p.y + p.width / 2), 0) + plan.obstacles.reduce((sum, o) => sum + (o.weight ?? 0) * (o.y + o.width / 2), 0)) / cgWeight
-      : plan.vehicleWidth / 2
-    const axleLoads = !automaticAxleModel && axlePositions.length === 2 && cgWeight > 0
-      ? [
-          cgWeight * (axlePositions[1] - cgX) / (axlePositions[1] - axlePositions[0]),
-          cgWeight * (cgX - axlePositions[0]) / (axlePositions[1] - axlePositions[0]),
-        ]
-      : []
-    const axleLoadsValid = axleLoads.length === 2 && axleLoads.every(load => Number.isFinite(load) && load >= 0)
-    const cgBetweenAxles = axlePositions.length >= 2 && cgX >= axlePositions[0] && cgX <= axlePositions[1]
+    const cgWeight = staticLoad.totalWeight
+    const cgX = staticLoad.cgX
+    const cgY = staticLoad.cgY
+    const axleLoads = !automaticAxleModel && staticLoad.valid ? staticLoad.axleLoads : []
+    const axleLoadsValid = axleLoads.length === axlePositions.length && axleLoads.every(load => Number.isFinite(load) && load >= 0)
+    const cgBetweenAxles = staticLoad.valid
     const transverseShift = Math.abs(cgY - plan.vehicleWidth / 2) / plan.vehicleWidth
     const transverseImbalance = transverseShift > 0.25
     const axleValue = axleLoadsValid
@@ -318,9 +309,7 @@ export const SolverService = {
           const role = axlePositions.length === 2 ? (semanticNumber === 1 ? ' передняя' : ' задняя') : ''
           return 'Ось ' + semanticNumber + role + ': ' + new Intl.NumberFormat('ru-RU').format(Math.round(load)) + ' кг'
         }).join(' · ')
-      : axlePositions.length > 2
-        ? `${axlePositions.length} оси · ЦМ X ${(cgX / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} м · база ${(axlePositions[0] / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })}–${(axlePositions[axlePositions.length - 1] / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} м`
-        : 'Центр массы вне базы осей'
+      : (staticLoad.reason ?? 'Недостаточно данных для расчёта')
     const axleCapacitiesKnown = plan.axles.length >= 2 && plan.axles.every(a => a.capacityKg > 0)
     const sortedAxles = plan.axles.slice().sort((a, b) => a.position - b.position)
     const axleCapacityViolation = axleCapacitiesKnown && axleLoadsValid && axleLoads.some((load, i) => load > sortedAxles[i].capacityKg)
@@ -347,15 +336,13 @@ export const SolverService = {
     return [
       { id: 'count', label: 'Размещение', value: `${plan.pallets.length} / ${requestedCount}`, status: placementViolation ? 'VIOLATION' : 'CHECKED', note: geometryViolation ? 'Есть выход за кузов, пересечение или недоступную зону' : unplacedCount > 0 ? `Не размещено: ${unplacedCount} шт. Недостаточно свободного места` : 'Все паллеты внутри кузова и не пересекаются' },
       { id: 'weight', label: 'Вес груза', value: unplacedCount > 0 ? `${new Intl.NumberFormat('ru-RU').format(totalWeight)} / ${new Intl.NumberFormat('ru-RU').format(requestedWeight)} кг` : `${new Intl.NumberFormat('ru-RU').format(totalWeight)} кг`, status: 'CHECKED', note: unplacedCount > 0 ? `Размещено ${new Intl.NumberFormat('ru-RU').format(totalWeight)} кг из ${new Intl.NumberFormat('ru-RU').format(requestedWeight)} кг` : 'Сумма введённых весов' },
-      { id: 'axles', label: 'Нагрузка на оси', value: axleValue, status: automaticAxleModel ? 'NOT_CHECKED' : (axleCapacityViolation || !cgBetweenAxles || transverseImbalance ? 'VIOLATION' : axleLoadsValid ? 'CALCULATED' : 'NOT_CHECKED'), note: automaticAxleModel ? 'Положение осей задано автоматически и служит для визуальной оценки. Перетащите ось или задайте координаты вручную для точного расчёта.' : axleCapacityViolation ? 'Расчётная нагрузка превышает введённую грузоподъёмность оси' : !cgBetweenAxles ? 'Центр массы находится вне базы осей — перераспределите груз или измените положение осей' : axleLoadsValid ? (
+      { id: 'axles', label: 'Нагрузка на оси', value: axleValue, status: automaticAxleModel ? 'NOT_CHECKED' : (axleCapacityViolation || !cgBetweenAxles || transverseImbalance ? 'VIOLATION' : axleLoadsValid ? 'CALCULATED' : 'NOT_CHECKED'), note: automaticAxleModel ? 'Положение осей задано автоматически и служит только ориентиром. Перетащите ось или задайте координаты вручную для расчёта.' : axleCapacityViolation ? 'Расчётная нагрузка превышает допустимую нагрузку одной из осей' : !cgBetweenAxles ? 'Центр массы находится вне базы осей — есть риск разгрузки крайней оси' : axleLoadsValid ? (
           transverseImbalance
             ? '⚠ Центр массы заметно смещён поперёк кузова — оцените распределение по бортам'
             : axlePositions.length > 2
-              ? 'Для 3+ осей на этапе 1 проверяется база и положение центра массы; нагрузка по каждой оси пока не рассчитывается'
-              : (axleCapacitiesKnown ? 'Расчётная нагрузка по указанным осям' : 'Расчёт по введённым положениям осей; допустимая нагрузка не указана')
-        ) : axlePositions.length > 2
-          ? 'Недостаточно данных для расчёта нагрузки по каждой оси'
-          : 'Недостаточно данных для расчёта' },
+              ? 'Упрощённая статическая модель: нагрузка распределена между двумя осями, охватывающими центр массы'
+              : (axleCapacitiesKnown ? 'Статический расчёт по введённым положениям и допустимым нагрузкам осей' : 'Статический расчёт по введённым положениям осей; допустимая нагрузка не указана')
+        ) : (staticLoad.reason ?? 'Недостаточно данных для расчёта') },
       { id: 'height', label: 'Высота', value: heightValue, status: heightViolation ? 'VIOLATION' : hasHeightData ? 'CHECKED' : 'NOT_CHECKED', note: bodyHeightViolation ? 'Груз выше полезной высоты кузова' : localHeightViolation ? 'В зоне холодильной установки полезная высота уменьшена на ' + (Math.max(0, ...plan.obstacles.map(o => o.height ?? 0)) / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' м' : hasHeightData ? 'Высота груза не превышает высоту кузова на всей доступной площади' : 'Нет данных для расчёта' },
       { id: 'payload', label: 'Грузоподъёмность', value: plan.payloadCapacityKg != null ? `${new Intl.NumberFormat('ru-RU').format(totalWeight)} / ${new Intl.NumberFormat('ru-RU').format(plan.payloadCapacityKg)} кг` : '—', status: plan.payloadCapacityKg != null ? (totalWeight > plan.payloadCapacityKg ? 'VIOLATION' : 'CHECKED') : 'NOT_CHECKED', note: plan.payloadCapacityKg != null ? (totalWeight > plan.payloadCapacityKg ? 'Размещённый груз превышает грузоподъёмность' : `Размещённый груз в пределах ${new Intl.NumberFormat('ru-RU').format(plan.payloadCapacityKg)} кг`) : 'Не указана грузоподъёмность' },
       { id: 'cg', label: 'Центр тяжести', value: cgValue, status: cgWeight > 0 ? 'CALCULATED' : 'NOT_CHECKED', note: cgWeight > 0 ? 'Расчётный центр массы размещённого груза' : 'Нет размещённого груза' },
