@@ -48,7 +48,7 @@ function PlanForm() {
     resolver: zodResolver(schema),
     defaultValues: {
       vehicleLength: 6, vehicleWidth: 2.05, vehicleHeight: 2.2, coolerLength: 1.23, coolerHeight: 0.29, coolerProjection: 0.68, payloadCapacityKg: undefined, doorWidth: 0.23, gap: 0,
-      hasObstacle: false, obstacleMode: 'AUTO', obstacleX: 5.23, obstacleY: 0.7, obstacleLength: 0.42, obstacleWidth: 0.54, unavailable: false, unavailableX: 2.5, unavailableY: 0, unavailableLength: 1.0, unavailableWidth: 2.05, axleCount: 0,
+      hasObstacle: false, obstacleMode: 'AUTO', obstacleX: 5.23, obstacleY: 0.7, obstacleLength: 0.42, obstacleWidth: 0.54, unavailable: false, unavailableX: 2.5, unavailableY: 0, unavailableLength: 1.0, unavailableWidth: 2.05, axleCount: 2,
       cargoGroups: [{ name: 'EUR паллета', length: 1.2, width: 0.8, height: 0, weight: 450, count: 10, rotatable: true, stackable: false }],
     },
   })
@@ -202,7 +202,14 @@ function PlanForm() {
       gaps: v.gap ? [{ id: 'gap', x: v.doorWidth * 1000, y: 0, length: v.gap * 1000, width: v.vehicleWidth * 1000, label: 'Зазор' }] : [],
       obstacles: [{ id: 'cooler', ...cooler, label: 'Холодильная установка' }, ...customObstacles.map((o, index) => ({ id: `obstacle-${index + 1}`, ...o, label: v.obstacleMode === 'FIXED' ? 'Препятствие · фиксированное' : 'Препятствие · авто' }))],
       unavailableZones: v.unavailable ? [{ id: 'unavailable', x: v.unavailableX * 1000, y: v.unavailableY * 1000, length: v.unavailableLength * 1000, width: v.unavailableWidth * 1000, label: 'Недоступная зона' }] : [],
-      axles: Array.from({ length: v.axleCount }, (_, i) => ({ id: `axle-${i + 1}`, position: v.vehicleLength * 1000 * (i + 1) / (v.axleCount + 1), capacityKg: 0 })),
+      // Если пользователь не указал оси, используем минимальную базовую конфигурацию
+      // для грузового кузова — 2 оси. Это только геометрическая модель:
+      // фактическая нагрузка на оси на этапе 1 всё равно не проверяется.
+      axles: Array.from({ length: Math.max(2, v.axleCount) }, (_, i) => ({
+        id: `axle-${i + 1}`,
+        position: v.vehicleLength * 1000 * (i + 1) / (Math.max(2, v.axleCount) + 1),
+        capacityKg: 0,
+      })),
       cargoGroups,
       pallets,
     }
@@ -276,7 +283,7 @@ function PlanForm() {
     <label className="check-field"><input type="checkbox" {...register('unavailable')} /> Есть недоступная зона</label>
     <div className="field-grid four"><Field label="X, м" input={<input inputMode="decimal" {...register('unavailableX')} />} error={errors.unavailableX?.message} /><Field label="Y, м" input={<input inputMode="decimal" {...register('unavailableY')} />} error={errors.unavailableY?.message} /><Field label="Длина, м" input={<input inputMode="decimal" {...register('unavailableLength')} />} error={errors.unavailableLength?.message} /><Field label="Ширина, м" input={<input inputMode="decimal" {...register('unavailableWidth')} />} error={errors.unavailableWidth?.message} /></div>
     <div className="section-label cargo-label">Автомобиль и оси</div>
-    <Field label="Количество осей" input={<input {...register('axleCount')} />} error={errors.axleCount?.message} />
+    <Field label="Количество осей" input={<input {...register('axleCount')} placeholder="2 — если не указано" />} error={errors.axleCount?.message} />
     <div className="section-label cargo-label">Грузовые группы</div>
     <div className="cargo-groups">
       {fields.map((field, index) => (
