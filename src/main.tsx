@@ -882,6 +882,7 @@ function Visualizer() {
     <div className="vehicle-fit-options">
       {vehicleFitSuggestion.lengthAtCurrentWidth != null && <div><b>Оставить ширину { (vehicleFitSuggestion.currentWidth / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) } м</b><span>нужна длина ≈ {(vehicleFitSuggestion.lengthAtCurrentWidth / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 1 })} м</span></div>}
       {vehicleFitSuggestion.widthAtCurrentLength != null && <div><b>Оставить длину { (vehicleFitSuggestion.currentLength / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 1 }) } м</b><span>нужна ширина ≈ {(vehicleFitSuggestion.widthAtCurrentLength / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} м</span></div>}
+      {vehicleFitSuggestion.minimumHeight != null && <div><b>Нужна высота кузова</b><span>не менее {(vehicleFitSuggestion.minimumHeight / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} м</span></div>}
     </div>
     <small>{vehicleFitSuggestion.note}</small>
   </div>}</div></section><div className="mode-note">2D схема · 3D — скоро</div></main>
