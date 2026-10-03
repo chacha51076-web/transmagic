@@ -36,12 +36,13 @@ const getLoadGeometry = (plan: LoadPlan) => {
   const axlePositions = plan.axles.length >= 2
     ? plan.axles.slice().sort((a, b) => a.position - b.position).map(a => a.position)
     : [plan.vehicleLength * 0.70, plan.vehicleLength * 0.90]
-  const totalWeight = plan.pallets.reduce((sum, p) => sum + p.weight, 0)
+  const fixedWeight = plan.obstacles.reduce((sum, o) => sum + (o.weight ?? 0), 0)
+  const totalWeight = plan.pallets.reduce((sum, p) => sum + p.weight, 0) + fixedWeight
   const cgX = totalWeight > 0
-    ? plan.pallets.reduce((sum, p) => sum + p.weight * (p.x + p.length / 2), 0) / totalWeight
+    ? (plan.pallets.reduce((sum, p) => sum + p.weight * (p.x + p.length / 2), 0) + plan.obstacles.reduce((sum, o) => sum + (o.weight ?? 0) * (o.x + o.length / 2), 0)) / totalWeight
     : plan.vehicleLength / 2
   const cgY = totalWeight > 0
-    ? plan.pallets.reduce((sum, p) => sum + p.weight * (p.y + p.width / 2), 0) / totalWeight
+    ? (plan.pallets.reduce((sum, p) => sum + p.weight * (p.y + p.width / 2), 0) + plan.obstacles.reduce((sum, o) => sum + (o.weight ?? 0) * (o.y + o.width / 2), 0)) / totalWeight
     : plan.vehicleWidth / 2
   return { axlePositions, cgX, cgY, assumed: plan.axles.length < 2 }
 }
@@ -61,7 +62,7 @@ function PlanForm() {
     resolver: zodResolver(schema),
     defaultValues: {
       vehicleLength: 6, vehicleWidth: 2.05, vehicleHeight: 2.2, coolerLength: 1.23, coolerHeight: 0.29, coolerProjection: 0.68, payloadCapacityKg: undefined, doorWidth: 0.23, gap: 0,
-      hasObstacle: false, obstacleMode: 'AUTO', obstacleX: 5.23, obstacleY: 0.7, obstacleLength: 0.42, obstacleWidth: 0.54, unavailable: false, unavailableX: 2.5, unavailableY: 0, unavailableLength: 1.0, unavailableWidth: 2.05, axleCount: 2,
+      hasObstacle: false, obstacleMode: 'AUTO', obstacleX: 5.23, obstacleY: 0.7, obstacleLength: 0.42, obstacleWidth: 0.54, obstacleWeight: 0, unavailable: false, unavailableX: 2.5, unavailableY: 0, unavailableLength: 1.0, unavailableWidth: 2.05, axleCount: 2,
       cargoGroups: [{ name: 'EUR паллета', length: 1.2, width: 0.8, height: 0, weight: 450, count: 10, rotatable: true, stackable: false }],
     },
   })
@@ -90,17 +91,25 @@ function PlanForm() {
     }
     const obstacleLength = v.obstacleLength * 1000
     const obstacleWidth = v.obstacleWidth * 1000
+    // «Есть уже загруженный груз» по умолчанию считаем закреплённым
+    // ближе к кабине. Новая загрузка выполняется со стороны задних дверей
+    // и не требует переставлять уже загруженный груз.
     const autoObstacle = {
-      x: Math.max(v.doorWidth * 1000 + v.gap * 1000, v.vehicleLength * 1000 - obstacleLength - 200),
-      y: Math.max(0, v.vehicleWidth * 1000 - obstacleWidth - 200),
+      x: Math.max(
+        v.doorWidth * 1000 + v.gap * 1000,
+        v.vehicleLength * 1000 - coolerProjection - obstacleLength
+      ),
+      y: Math.max(0, (v.vehicleWidth * 1000 - obstacleWidth) / 2),
       length: obstacleLength,
       width: obstacleWidth,
+      weight: v.obstacleWeight ?? 0,
     }
     const customObstacle = {
       x: v.obstacleX * 1000,
       y: v.obstacleY * 1000,
       length: obstacleLength,
       width: obstacleWidth,
+      weight: v.obstacleWeight ?? 0,
     }
     const customObstacles = v.hasObstacle && obstacleLength > 0 && obstacleWidth > 0
       ? [v.obstacleMode === 'FIXED' ? customObstacle : autoObstacle]
@@ -319,11 +328,12 @@ function PlanForm() {
     <div className="section-label cargo-label">Холодильная установка · по центру передней стенки</div>
     <div className="field-grid three"><Field label="Длина, м" input={<input inputMode="decimal" placeholder="1,23" {...register('coolerLength')} />} error={errors.coolerLength?.message} /><Field label="Высота, м" input={<input inputMode="decimal" placeholder="0,29" {...register('coolerHeight')} />} error={errors.coolerHeight?.message} /><Field label="Выпирает, м" input={<input inputMode="decimal" placeholder="0,68" {...register('coolerProjection')} />} error={errors.coolerProjection?.message} /></div>
     <div className="field-grid three"><Field label="Двери, м" input={<input inputMode="decimal" placeholder="0,23" {...register('doorWidth')} />} error={errors.doorWidth?.message} /><Field label="Зазор, м" input={<input inputMode="decimal" placeholder="0" {...register('gap')} />} error={errors.gap?.message} /><Field label="Грузоподъёмность, кг" input={<input {...register('payloadCapacityKg')} placeholder="не указана" />} error={errors.payloadCapacityKg?.message} /></div>
-    <div className="section-label cargo-label">Препятствия и недоступные зоны</div>
-    <label className="check-field"><input type="checkbox" {...register('hasObstacle')} /> Есть препятствие</label>
+    <div className="section-label cargo-label">Уже загруженный груз и недоступные зоны</div>
+    <label className="check-field"><input type="checkbox" {...register('hasObstacle')} /> Уже есть загруженный груз</label>
     {watch('hasObstacle') && <>
-      <div className="field-grid two obstacle-mode-row"><Field label="Положение" input={<select {...register('obstacleMode')}><option value="AUTO">Автоматически — система выберет место</option><option value="FIXED">Фиксированно — использовать X/Y</option></select>} error={errors.obstacleMode?.message} /><Field label="Описание" input={<input value={watch('obstacleMode') === 'FIXED' ? 'Объект нельзя перемещать' : 'Объект можно перемещать'} readOnly />} /></div>
-      <div className="field-grid four"><Field label="Длина, м" input={<input inputMode="decimal" {...register('obstacleLength')} />} error={errors.obstacleLength?.message} /><Field label="Ширина, м" input={<input inputMode="decimal" {...register('obstacleWidth')} />} error={errors.obstacleWidth?.message} />{watch('obstacleMode') === 'FIXED' && <><Field label="X, м" input={<input inputMode="decimal" {...register('obstacleX')} />} error={errors.obstacleX?.message} /><Field label="Y, м" input={<input inputMode="decimal" {...register('obstacleY')} />} error={errors.obstacleY?.message} /></>}</div>
+      <small className="field-hint">Этот груз уже стоит в кузове и не перемещается. По умолчанию он находится ближе к кабине, а новый груз загружается от задних дверей.</small>
+      <div className="field-grid two obstacle-mode-row"><Field label="Положение" input={<select {...register('obstacleMode')}><option value="AUTO">У кабины — автоматически</option><option value="FIXED">Задать положение вручную</option></select>} error={errors.obstacleMode?.message} /><Field label="Вес уже загруженного, кг" input={<input inputMode="decimal" {...register('obstacleWeight')} placeholder="не указан" />} error={errors.obstacleWeight?.message} /></div>
+      <div className="field-grid four"><Field label="Габарит X, м" input={<input inputMode="decimal" {...register('obstacleLength')} />} error={errors.obstacleLength?.message} /><Field label="Габарит Y, м" input={<input inputMode="decimal" {...register('obstacleWidth')} />} error={errors.obstacleWidth?.message} />{watch('obstacleMode') === 'FIXED' && <><Field label="Положение X, м" input={<input inputMode="decimal" {...register('obstacleX')} />} error={errors.obstacleX?.message} /><Field label="Положение Y, м" input={<input inputMode="decimal" {...register('obstacleY')} />} error={errors.obstacleY?.message} /></>}</div>
     </>}
     <label className="check-field"><input type="checkbox" {...register('unavailable')} /> Есть недоступная зона</label>
     <div className="field-grid four"><Field label="X, м" input={<input inputMode="decimal" {...register('unavailableX')} />} error={errors.unavailableX?.message} /><Field label="Y, м" input={<input inputMode="decimal" {...register('unavailableY')} />} error={errors.unavailableY?.message} /><Field label="Длина, м" input={<input inputMode="decimal" {...register('unavailableLength')} />} error={errors.unavailableLength?.message} /><Field label="Ширина, м" input={<input inputMode="decimal" {...register('unavailableWidth')} />} error={errors.unavailableWidth?.message} /></div>
