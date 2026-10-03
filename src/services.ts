@@ -211,12 +211,14 @@ export const SolverService = {
         ]
       : []
     const axleLoadsValid = axleLoads.length === 2 && axleLoads.every(load => Number.isFinite(load) && load >= 0)
-    const cgBetweenAxles = axlePositions.length === 2 && cgX >= axlePositions[0] && cgX <= axlePositions[1]
+    const cgBetweenAxles = axlePositions.length >= 2 && cgX >= axlePositions[0] && cgX <= axlePositions[axlePositions.length - 1]
     const transverseShift = Math.abs(cgY - plan.vehicleWidth / 2) / plan.vehicleWidth
     const transverseImbalance = transverseShift > 0.25
     const axleValue = axleLoadsValid
       ? axleLoads.map((load, i) => 'Ось ' + (i + 1) + ': ' + new Intl.NumberFormat('ru-RU').format(Math.round(load)) + ' кг').join(' · ')
-      : 'Центр массы вне базы осей'
+      : axlePositions.length > 2
+        ? `${axlePositions.length} оси · ЦМ X ${(cgX / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} м · база ${(axlePositions[0] / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })}–${(axlePositions[axlePositions.length - 1] / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} м`
+        : 'Центр массы вне базы осей'
     const axleCapacitiesKnown = plan.axles.length >= 2 && plan.axles.every(a => a.capacityKg > 0)
     const sortedAxles = plan.axles.slice().sort((a, b) => a.position - b.position)
     const axleCapacityViolation = axleCapacitiesKnown && axleLoadsValid && axleLoads.some((load, i) => load > sortedAxles[i].capacityKg)
@@ -233,8 +235,12 @@ export const SolverService = {
             ? '⚠ Центр массы заметно смещён поперёк кузова — оцените распределение по бортам'
             : automaticAxleModel
               ? 'Расчёт по автоматической модели осей; для точной проверки укажите положение осей'
-              : (axleCapacitiesKnown ? 'Расчётная нагрузка по указанным осям' : 'Расчёт по введённым положениям осей; допустимая нагрузка не указана')
-        ) : 'Недостаточно данных для расчёта' },
+              : axlePositions.length > 2
+                ? 'Для 3+ осей на этапе 1 проверяется база и положение центра массы; нагрузка по каждой оси пока не рассчитывается'
+                : (axleCapacitiesKnown ? 'Расчётная нагрузка по указанным осям' : 'Расчёт по введённым положениям осей; допустимая нагрузка не указана')
+        ) : axlePositions.length > 2
+          ? 'Недостаточно данных для расчёта нагрузки по каждой оси'
+          : 'Недостаточно данных для расчёта' },
       { id: 'height', label: 'Высота', value: heightValue, status: heightViolation ? 'VIOLATION' : hasHeightData ? 'CHECKED' : 'NOT_CHECKED', note: heightViolation ? 'Груз выше полезной высоты кузова' : hasHeightData ? 'Высота груза не превышает высоту кузова' : 'Нет данных для расчёта' },
       { id: 'payload', label: 'Грузоподъёмность', value: plan.payloadCapacityKg != null ? `${new Intl.NumberFormat('ru-RU').format(totalWeight)} / ${new Intl.NumberFormat('ru-RU').format(plan.payloadCapacityKg)} кг` : '—', status: plan.payloadCapacityKg != null ? (totalWeight > plan.payloadCapacityKg ? 'VIOLATION' : 'CHECKED') : 'NOT_CHECKED', note: plan.payloadCapacityKg != null ? (totalWeight > plan.payloadCapacityKg ? 'Размещённый груз превышает грузоподъёмность' : `Размещённый груз в пределах ${new Intl.NumberFormat('ru-RU').format(plan.payloadCapacityKg)} кг`) : 'Не указана грузоподъёмность' },
       { id: 'cg', label: 'Центр тяжести', value: cgValue, status: cgWeight > 0 ? 'CALCULATED' : 'NOT_CHECKED', note: cgWeight > 0 ? 'Расчётный центр массы размещённого груза' : 'Нет размещённого груза' },
