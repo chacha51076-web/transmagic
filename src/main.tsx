@@ -60,8 +60,9 @@ type FormValues = z.infer<typeof schema>
 const statusClass: Record<CheckStatus, string> = { CHECKED: 'status-ok', VIOLATION: 'status-bad', NOT_CHECKED: 'status-idle', CALCULATED: 'status-calculated' }
 const statusText: Record<CheckStatus, string> = { CHECKED: 'ПРОВЕРЕНО', VIOLATION: 'НАРУШЕНИЕ', NOT_CHECKED: 'НЕ ПРОВЕРЕНО', CALCULATED: 'РАССЧИТАНО' }
 const getLoadGeometry = (plan: LoadPlan) => {
-  const axlePositions = plan.axles.length >= 2
-    ? plan.axles.slice().sort((a, b) => a.position - b.position).map(a => a.position)
+  const sortedAxles = plan.axles.slice().sort((a, b) => a.position - b.position)
+  const axlePositions = sortedAxles.length >= 2
+    ? sortedAxles.map(a => a.position)
     : [plan.vehicleLength * 0.70, plan.vehicleLength * 0.90]
   const fixedWeight = plan.obstacles.reduce((sum, o) => sum + (o.weight ?? 0), 0)
   const totalWeight = plan.pallets.reduce((sum, p) => sum + p.weight, 0) + fixedWeight
@@ -71,8 +72,34 @@ const getLoadGeometry = (plan: LoadPlan) => {
   const cgY = totalWeight > 0
     ? (plan.pallets.reduce((sum, p) => sum + p.weight * (p.y + p.width / 2), 0) + plan.obstacles.reduce((sum, o) => sum + (o.weight ?? 0) * (o.y + o.width / 2), 0)) / totalWeight
     : plan.vehicleWidth / 2
+  const axleLoads = sortedAxles.length === 2 && totalWeight > 0
+    ? sortedAxles.map((axle, index) => {
+        const rear = sortedAxles[0]
+        const front = sortedAxles[1]
+        const loadKg = index === 0
+          ? totalWeight * (front.position - cgX) / (front.position - rear.position)
+          : totalWeight * (cgX - rear.position) / (front.position - rear.position)
+        const valid = Number.isFinite(loadKg) && loadKg >= 0
+        const percent = valid ? loadKg / totalWeight * 100 : null
+        return {
+          ...axle,
+          axleNumber: index === 1 ? 1 : 2,
+          role: index === 1 ? 'передняя / рулевая' : 'задняя / ведущая',
+          loadKg: valid ? loadKg : null,
+          percent,
+          overCapacity: valid && axle.capacityKg > 0 ? loadKg > axle.capacityKg : false,
+        }
+      })
+    : sortedAxles.map((axle, index) => ({
+        ...axle,
+        axleNumber: sortedAxles.length === 2 ? (index === 1 ? 1 : 2) : index + 1,
+        role: sortedAxles.length === 2 ? (index === 1 ? 'передняя / рулевая' : 'задняя / ведущая') : '',
+        loadKg: null,
+        percent: null,
+        overCapacity: false,
+      }))
   const automatic = plan.axles.length < 2 || plan.axles.some(axle => axle.source === 'AUTO')
-  return { axlePositions, cgX, cgY, assumed: automatic }
+  return { axlePositions, axleLoads, cgX, cgY, totalWeight, assumed: automatic }
 }
 const presets = [
   ['EUR 1,2 × 0,8 м', 1.2, 0.8], ['1,2 × 1,0 м', 1.2, 1.0], ['1,2 × 1,2 м', 1.2, 1.2], ['Свои размеры', 0, 0],
@@ -637,9 +664,11 @@ function Visualizer() {
     setDrag(null)
   }
 
-  const visualPlan = drag
-    ? { ...plan, pallets: plan.pallets.map(p => p.id === drag.id ? { ...p, x: drag.x, y: drag.y } : p) }
-    : plan
+  const visualPlan = {
+    ...plan,
+    pallets: drag ? plan.pallets.map(p => p.id === drag.id ? { ...p, x: drag.x, y: drag.y } : p) : plan.pallets,
+    axles: axleDrag ? plan.axles.map(axle => axle.id === axleDrag.id ? { ...axle, position: axleDrag.x, source: 'FIXED' as const } : axle) : plan.axles,
+  }
   const selected = visualPlan.pallets.find(p => p.id === selectedPallet)
   const orientation = selected ? (selected.length >= selected.width ? 'По длине кузова' : 'Повернута на 90°') : '—'
   const conflicts = visualPlan.pallets.filter((p, i) => {
@@ -731,6 +760,24 @@ function Visualizer() {
         <rect x={displayX - 150} y={plan.vehicleWidth + 82} width="300" height="58" rx="12" className="axle-label-bg" />
         <text x={displayX} y={plan.vehicleWidth + 119} textAnchor="middle" className="axle-label">Ось {axleNumber}</text>
         {axleRole && <text x={displayX} y={plan.vehicleWidth + 151} textAnchor="middle" className="axle-role-label">{axleRole}</text>}
+        {(() => {
+          const load = loadGeometry.axleLoads.find(item => item.id === axle.id)
+          if (!load) return null
+          const loadText = load.loadKg == null
+            ? 'ЦМ вне базы'
+            : Math.round(load.loadKg).toLocaleString('ru-RU') + ' кг · ' + load.percent!.toFixed(0) + '%'
+          const statusClass = load.overCapacity ? 'axle-load-badge danger' : load.loadKg == null ? 'axle-load-badge warning' : 'axle-load-badge'
+          const subText = load.loadKg == null
+            ? 'Нагрузка не определена'
+            : load.capacityKg > 0
+              ? 'допуск ' + Math.round(load.capacityKg).toLocaleString('ru-RU') + ' кг'
+              : 'допустимая нагрузка не указана'
+          return <g className={statusClass}>
+            <rect x={displayX - 210} y={plan.vehicleWidth + 285} width="420" height="86" rx="14" />
+            <text x={displayX} y={plan.vehicleWidth + 321} textAnchor="middle" className="axle-load-value">{loadText}</text>
+            <text x={displayX} y={plan.vehicleWidth + 351} textAnchor="middle" className="axle-load-note">{subText}</text>
+          </g>
+        })()}
       </g>
     })}
     {plan.pallets.length > 0 && <g>
@@ -741,6 +788,7 @@ function Visualizer() {
       <text x={loadGeometry.cgX + 285} y={loadGeometry.cgY - 54} textAnchor="middle" className="cg-label">ЦЕНТР МАССЫ</text>
     </g>}
     <text x={plan.vehicleLength - 20} y={-185} textAnchor="end" className="load-model-note">{loadGeometry.assumed ? 'Оси: автоматическая расчётная модель' : 'Оси: введены пользователем'}</text>
+    {loadGeometry.axleLoads.length === 2 && <text x={plan.vehicleLength - 20} y={-145} textAnchor="end" className="axle-total-note">Суммарная нагрузка: {Math.round(loadGeometry.totalWeight).toLocaleString('ru-RU')} кг</text>}
   </g>
 })()}<g className="coordinate-system" pointerEvents="none"><line x1="0" y1={plan.vehicleWidth + 175} x2={plan.vehicleLength} y2={plan.vehicleWidth + 175} markerEnd="url(#axisArrow)" /><text x={plan.vehicleLength / 2} y={plan.vehicleWidth + 235} textAnchor="middle">X — ДЛИНА КУЗОВА →</text><line x1="-170" y1={plan.vehicleWidth} x2="-170" y2="0" markerEnd="url(#axisArrow)" /><text x="-245" y={plan.vehicleWidth / 2} textAnchor="middle" transform={`rotate(-90 -245 ${plan.vehicleWidth / 2})`}>Y — ШИРИНА ↑</text><text x="0" y={plan.vehicleWidth + 205} textAnchor="start">0 м</text><text x={plan.vehicleLength} y={plan.vehicleWidth + 205} textAnchor="end">{(plan.vehicleLength / 1000).toLocaleString('ru-RU')} м</text><text x="-195" y={plan.vehicleWidth + 20} textAnchor="end">0 м</text><text x="-195" y="20" textAnchor="end">{(plan.vehicleWidth / 1000).toLocaleString('ru-RU')} м</text><text x={plan.vehicleLength + 80} y={plan.vehicleWidth / 2} className="orientation-label">ПЕРЕД<br/>КАБИНА</text><text x="-20" y={plan.vehicleWidth / 2} textAnchor="end" className="orientation-label">ЗАДНИЕ<br/>ДВЕРИ</text></g></svg></div></section><section className="bottom-info"><div className="selected-card"><span className="mini-pallet">▦</span><div><span className="eyebrow">ВЫБРАНА ПАЛЛЕТА</span><b>Паллета #{selected?.id ?? '—'} <small>· {selected?.weight ?? '—'} кг</small></b>{selected && <><div className="pallet-actions"><button type="button" onClick={() => void rotateSelectedPallet()} disabled={!selected.rotatable || selected.length === selected.width}>↻ Развернуть паллету</button><label>Вес, кг <input type="number" min="1" value={selected.weight} onChange={e => void setSelectedPalletWeight(Number(e.target.value))} /></label></div><div className="compact-hint">Потяните паллету мышью или пальцем. Во время перемещения схема сразу показывает, можно ли поставить груз без пересечения.</div></>}{selected && <div className="pallet-details"><span><b>Габариты в кузове</b> · X: {(selected.length / 1000).toLocaleString('ru-RU')} м · Y: {(selected.width / 1000).toLocaleString('ru-RU')} м</span><span><b>Положение</b> · X: {(selected.x / 1000).toLocaleString('ru-RU')} м · Y: {(selected.y / 1000).toLocaleString('ru-RU')} м</span><span><b>Высота</b> · {(selected.height / 1000).toLocaleString('ru-RU')} м</span><span><b>Ориентация</b> · {orientation}</span></div>}</div>{conflictReason && <div className="conflict-note">⚠ {conflictReason}</div>}</div><div className="summary"><span className="summary-title">ПРОВЕРКИ · ЭТАП 1</span>{calculations.map(c => <div className={`check ${c.id === 'count' && c.status === 'VIOLATION' ? 'check-placement-alert' : ''}`} key={c.id}><span className={`dot ${statusClass[c.status]}`} /><div><b>{c.label}</b><small>{c.note}</small>{c.id === 'count' && c.status === 'VIOLATION' && <div className="placement-alert"><div className="placement-alert-top"><strong>Не помещается: {unplacedCount} шт.</strong><span>{placedCount} из {requestedCount}</span></div><div className="placement-progress"><span style={{ width: `${requestedCount ? Math.min(100, placedCount / requestedCount * 100) : 0}%` }} /></div></div>}</div><strong>{c.value}</strong><em className={statusClass[c.status]}>{statusText[c.status]}</em></div>)}</div></section><div className="mode-note">2D схема · 3D — скоро</div></main>
 }
