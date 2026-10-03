@@ -222,13 +222,13 @@
 .variant-picker{margin:10px 0 14px;padding:10px 12px;border:1px solid #dbe4e6;border-radius:10px;background:#fff}
 .variant-picker>span{display:block;color:#82979b;font:500 9px 'DM Mono';letter-spacing:.08em;margin-bottom:7px}
 .variant-buttons{display:flex;gap:6px;flex-wrap:wrap}
-.variant-buttons button{border:1px solid #d3dfe1;border-radius:7px;background:#f7f9f9;color:#4c6469;padding:8px 10px;font:600 10px 'DM Mono'}
+.variant-buttons button{border:1px solid #d3dfe1;border-radius:7px;background:#f7f9f9;color:#4c6469;padding:8px 10px;font:600 10px 'DM Mono';display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:150px;text-align:left;cursor:pointer}.variant-buttons button strong{font:600 10px 'DM Mono'}.variant-buttons button small{margin:0;color:#82979b;font-size:8px}.variant-buttons button.active small{color:#56752d}
 .variant-buttons button.active{border-color:#9bc94d;background:#effbd9;color:#456526}
-.variant-buttons button:disabled{opacity:.45;cursor:not-allowed}
+.variant-buttons button:disabled{opacity:.45;cursor:not-allowed}.variant-buttons button:not(:disabled):hover{border-color:#9bc94d;background:#f4fbe8}
 .variant-picker small{display:block;margin-top:7px;color:#819398;font-size:9px}
 @media(max-width:760px){
  .variant-picker{padding:10px;margin-bottom:10px}
  .variant-buttons{display:grid;grid-template-columns:1fr}
- .variant-buttons button{min-height:44px;font-size:11px}
+ .variant-buttons button{min-height:50px;font-size:11px}.variant-buttons button strong{font-size:11px}.variant-buttons button small{font-size:9px}
  .variant-picker small{font-size:10px;line-height:1.4}
 }
