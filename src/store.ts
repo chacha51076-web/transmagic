@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { AssistantService, SolverService } from './services'
+import { AssistantService, PlacementService, SolverService } from './services'
 import type { Calculation, LoadPlan } from './types'
 
 interface LoadPlanState {
@@ -42,8 +42,9 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
     set({ isLoading: true, error: null })
     try {
       const plan = await AssistantService.createDemo()
+      const variants = [plan, ...PlacementService.createVariants(plan)]
       const calculations = await SolverService.summarize(plan)
-      set({ plan, variants: [plan], selectedVariant: 0, calculations, isLoading: false, selectedPallet: 1 })
+      set({ plan, variants, selectedVariant: 0, calculations, isLoading: false, selectedPallet: 1 })
     } catch { set({ isLoading: false, error: 'Не удалось построить демо-план' }) }
   },
   setPlan: async (plan) => {
