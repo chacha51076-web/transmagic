@@ -660,13 +660,27 @@ function Visualizer() {
         key={axle.id}
         className={isDragging ? 'axle-dragging' : 'axle-drag-target'}
         pointerEvents={isDraggable ? 'all' : 'none'}
-        onPointerDown={e => beginAxleDrag(e, axle.id, x)}
-        onPointerMove={e => updateAxleDrag(e, axle.id)}
-        onPointerUp={e => void finishAxleDrag(e, axle.id)}
-        onPointerCancel={() => setAxleDrag(null)}
       >
-        <line x1={x} y1={0} x2={x} y2={plan.vehicleWidth} className="axle-line" />
-        <line x1={x} y1={0} x2={x} y2={plan.vehicleWidth} className="axle-hit-area" pointerEvents="stroke" />
+        <rect
+          x={x - 75}
+          y={0}
+          width={150}
+          height={plan.vehicleWidth}
+          fill="transparent"
+          className="axle-hit-box"
+          pointerEvents={isDraggable ? 'all' : 'none'}
+          onPointerDown={e => beginAxleDrag(e, axle.id, x)}
+          onPointerMove={e => updateAxleDrag(e, axle.id)}
+          onPointerUp={e => void finishAxleDrag(e, axle.id)}
+          onPointerCancel={() => setAxleDrag(null)}
+        />
+        <line x1={x} y1={0} x2={x} y2={plan.vehicleWidth} className="axle-line" pointerEvents="none" />
+        <g className="axle-wheels" pointerEvents="none">
+          <rect x={x - 58} y={-92} width="116" height="84" rx="24" className="axle-wheel axle-wheel-top" />
+          <rect x={x - 58} y={plan.vehicleWidth + 8} width="116" height="84" rx="24" className="axle-wheel axle-wheel-bottom" />
+          <rect x={x - 18} y={-18} width="36" height={plan.vehicleWidth + 36} rx="18" className="axle-bridge" />
+          {axleNumber === 2 && <><rect x={x - 92} y={-92} width="24" height="84" rx="10" className="axle-wheel axle-wheel-inner-top" /><rect x={x + 68} y={-92} width="24" height="84" rx="10" className="axle-wheel axle-wheel-inner-top" /><rect x={x - 92} y={plan.vehicleWidth + 8} width="24" height="84" rx="10" className="axle-wheel axle-wheel-inner-bottom" /><rect x={x + 68} y={plan.vehicleWidth + 8} width="24" height="84" rx="10" className="axle-wheel axle-wheel-inner-bottom" /></>}
+        </g>
         <circle cx={x} cy={plan.vehicleWidth + 42} r={46} className="axle-drag-handle" />
         <text x={x} y={plan.vehicleWidth + 16} textAnchor="middle" className="axle-drag-hint">↔</text>
         <rect x={x - 150} y={plan.vehicleWidth + 82} width="300" height="58" rx="12" className="axle-label-bg" />
