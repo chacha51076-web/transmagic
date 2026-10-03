@@ -51,8 +51,8 @@ const schema = z.object({
     if (positions[i] > value.vehicleLength) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['axlePositions', i], message: 'Ось должна находиться внутри длины кузова.' })
     }
-    if (i > 0 && positions[i] <= positions[i - 1]) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['axlePositions', i], message: 'Оси должны идти от задней стенки к кабине.' })
+    if (i > 0 && positions[i] >= positions[i - 1]) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['axlePositions', i], message: 'Оси указываются от кабины к задней части: координата должна уменьшаться.' })
     }
   }
 })
@@ -90,7 +90,7 @@ function PlanForm() {
     resolver: zodResolver(schema),
     defaultValues: {
       vehicleLength: 6, vehicleWidth: 2.05, vehicleHeight: 2.2, coolerLength: 1.23, coolerHeight: 0.29, coolerProjection: 0.68, payloadCapacityKg: undefined, doorWidth: 0.23, gap: 0,
-      hasObstacle: false, obstacleMode: 'AUTO', obstacleWeight: 0, obstacleX: 5.23, obstacleY: 0.7, obstacleLength: 0.42, obstacleWidth: 0.54, unavailable: false, unavailableX: 2.5, unavailableY: 0, unavailableLength: 1.0, unavailableWidth: 2.05, axleCount: 2, axleMode: 'AUTO', axlePositions: [4.2, 5.4, 0, 0, 0, 0, 0, 0],
+      hasObstacle: false, obstacleMode: 'AUTO', obstacleWeight: 0, obstacleX: 5.23, obstacleY: 0.7, obstacleLength: 0.42, obstacleWidth: 0.54, unavailable: false, unavailableX: 2.5, unavailableY: 0, unavailableLength: 1.0, unavailableWidth: 2.05, axleCount: 2, axleMode: 'AUTO', axlePositions: [5.4, 4.2, 0, 0, 0, 0, 0, 0],
       cargoGroups: [{ name: 'EUR паллета', length: 1.2, width: 0.8, height: 0, weight: 450, count: 10, rotatable: true, stackable: false }],
     },
   })
@@ -185,9 +185,7 @@ function PlanForm() {
       const assumedAxlePositions = Array.from({ length: axleCount }, (_, i) =>
         v.axleMode === 'FIXED'
           ? v.axlePositions[i] * 1000
-          : v.vehicleLength * 1000 * (axleCount === 2
-              ? (i === 0 ? 0.70 : 0.90)
-              : (0.60 + 0.30 * i / Math.max(1, axleCount - 1)))
+          : v.vehicleLength * 1000 * (0.90 - 0.30 * i / Math.max(1, axleCount - 1))
       )
       const targetCenter = (assumedAxlePositions[0] + assumedAxlePositions[assumedAxlePositions.length - 1]) / 2
       const existingWeight = placed.reduce((sum, p) => sum + p.group.weight, 0)
@@ -289,9 +287,9 @@ function PlanForm() {
         id: `axle-${i + 1}`,
         position: v.axleMode === 'FIXED'
           ? v.axlePositions[i] * 1000
-          : v.vehicleLength * 1000 * (Math.max(2, v.axleCount) === 2
-              ? (i === 0 ? 0.70 : 0.90)
-              : (0.60 + 0.30 * i / Math.max(1, Math.max(2, v.axleCount) - 1))),
+          : v.vehicleLength * 1000 * (
+              0.90 - 0.30 * i / Math.max(1, Math.max(2, v.axleCount) - 1)
+            ),
         capacityKg: 0,
         source: v.axleMode,
       })),
@@ -389,10 +387,10 @@ function PlanForm() {
         <div className="axle-current-mode"><span>Режим</span><b>{watch('axleMode') === 'FIXED' ? 'Ручной ввод' : 'Автоматическая модель'}</b></div>
       </div>
       {watch('axleMode') === 'FIXED' && <div className="axle-position-block">
-        <small className="field-hint">Укажите расстояние от задней стенки кузова до центра каждой оси. Значения должны идти по возрастанию.</small>
+        <small className="field-hint">Укажите расстояние от задней стенки кузова до центра каждой оси. Ось №1 — передняя, затем оси идут к задней части кузова. Поэтому значения здесь идут по убыванию.</small>
         <div className="field-grid four">
           {Array.from({ length: Math.max(2, Number(watch('axleCount')) || 2) }, (_, index) =>
-            <Field key={index} label={`Ось ${index + 1}, м от задней стенки`} input={<input inputMode="decimal" {...register(`axlePositions.${index}` as const)} />} error={errors.axlePositions?.[index]?.message} />
+            <Field key={index} label={`Ось ${index + 1} · ${index === 0 ? 'передняя' : index === 1 && Math.max(2, Number(watch('axleCount')) || 2) === 2 ? 'задняя' : 'следующая'}, м от задней стенки`} input={<input inputMode="decimal" {...register(`axlePositions.${index}` as const)} />} error={errors.axlePositions?.[index]?.message} />
           )}
         </div>
       </div>}
@@ -454,7 +452,7 @@ function Visualizer() {
   const {
     plan, variants, selectedVariant, calculations, selectedPallet, setSelectedPallet,
     setSelectedVariant, rotateSelectedPallet, movePallet, undoLastMove, suggestVariant,
-    setSelectedPalletWeight, rotationFeedback, history,
+    setSelectedPalletWeight, rotationFeedback, history, moveAxlePosition,
   } = useLoadPlanStore()
   const [zoom, setZoom] = useState(1)
   const svgRef = useRef<SVGSVGElement | null>(null)
@@ -468,6 +466,7 @@ function Visualizer() {
     y: number
     valid: boolean
   } | null>(null)
+  const [axleDrag, setAxleDrag] = useState<{ id: string; originalX: number; x: number } | null>(null)
   if (!plan) return <main className="visualizer empty"><div className="empty-art">▱ ▱</div><h2>Схема загрузки появится здесь</h2><p>Нажмите «Попробовать пример» или заполните параметры вручную.</p></main>
   const overlapsRect = (a: { x: number; y: number; length: number; width: number }, b: { x: number; y: number; length: number; width: number }) =>
     a.x < b.x + b.length && a.x + a.length > b.x &&
@@ -506,6 +505,45 @@ function Visualizer() {
     point.x = event.clientX
     point.y = event.clientY
     return point.matrixTransform(matrix.inverse())
+  }
+
+  const beginAxleDrag = (event: PointerEvent<SVGGElement>, axleId: string, currentX: number) => {
+    const fixedMode = plan.axles.length >= 2 && plan.axles.every(axle => axle.source === 'FIXED')
+    if (!fixedMode) {
+      setAxleDrag(null)
+      return
+    }
+    const point = pointerToSvg(event)
+    if (!point) return
+    event.preventDefault()
+    event.stopPropagation()
+    try { event.currentTarget.setPointerCapture(event.pointerId) } catch {}
+    setAxleDrag({ id: axleId, originalX: currentX, x: currentX })
+  }
+
+  const updateAxleDrag = (event: PointerEvent<SVGGElement>, axleId: string) => {
+    if (!axleDrag || axleDrag.id !== axleId) return
+    const point = pointerToSvg(event)
+    const axles = plan.axles.slice().sort((a, b) => a.position - b.position)
+    const currentIndex = axles.findIndex(axle => axle.id === axleId)
+    if (!point || currentIndex < 0) return
+    const minGap = 500
+    const minX = currentIndex > 0 ? axles[currentIndex - 1].position + minGap : 0
+    const maxX = currentIndex < axles.length - 1 ? axles[currentIndex + 1].position - minGap : plan.vehicleLength
+    const x = Math.max(minX, Math.min(maxX, Math.round(point.x / 50) * 50))
+    setAxleDrag({ ...axleDrag, x })
+  }
+
+  const finishAxleDrag = async (event: PointerEvent<SVGGElement>, axleId: string) => {
+    if (!axleDrag || axleDrag.id !== axleId) return
+    event.preventDefault()
+    event.stopPropagation()
+    const current = axleDrag
+    setAxleDrag(null)
+    try { event.currentTarget.releasePointerCapture(event.pointerId) } catch {}
+    if (Math.abs(current.x - current.originalX) >= 50) {
+      await moveAxlePosition(axleId, current.x)
+    }
   }
 
   const beginDrag = (event: PointerEvent<SVGGElement>, palletId: number) => {
@@ -594,7 +632,7 @@ function Visualizer() {
     return { index, placed, requested, cg, axleText }
   })
   return <main className="visualizer"><header className="visual-header"><div><span className="eyebrow">ПЛАН ЗАГРУЗКИ</span><h2>Кузов · {plan.vehicleLength} × {plan.vehicleWidth} × {plan.vehicleHeight} мм</h2></div><div className="header-stat"><b>{plan.pallets.length}/{plan.cargoGroups.reduce((sum, g) => sum + g.count, 0)}</b><span>паллет</span></div></header><section className="canvas-wrap"><div className="map-toolbar">
-  <span>{drag ? (drag.valid ? 'МОЖНО ПОСТАВИТЬ' : 'НЕЛЬЗЯ ПОСТАВИТЬ') : 'ПЕРЕТАЩИТЕ ПАЛЛЕТУ МЫШЬЮ ИЛИ ПАЛЬЦЕМ'}</span>
+  <span>{drag ? (drag.valid ? 'МОЖНО ПОСТАВИТЬ' : 'НЕЛЬЗЯ ПОСТАВИТЬ') : axleDrag ? 'ПЕРЕМЕЩЕНИЕ ОСИ' : (plan.axles.every(a => a.source === 'FIXED') ? 'ПЕРЕТАЩИТЕ ПАЛЛЕТУ ИЛИ ОСЬ' : 'ПЕРЕТАЩИТЕ ПАЛЛЕТУ МЫШЬЮ ИЛИ ПАЛЬЦЕМ')}</span>
   <div className="map-actions">
     <button type="button" onClick={() => void undoLastMove()} disabled={history.length === 0}>↶ Отменить</button>
     <button type="button" onClick={() => void suggestVariant()} disabled={variants.length < 2}>💡 Предложить вариант</button>
@@ -613,11 +651,30 @@ function Visualizer() {
 ><rect x={p.x} y={p.y} width={p.length} height={p.width} rx="18" className={`pallet ${selectedPallet === p.id ? 'selected' : ''} ${conflicts.some(c => c.id === p.id) ? 'pallet-conflict' : ''} ${drag?.id === p.id ? (drag.valid ? 'drag-valid' : 'drag-invalid') : ''}`} /><text x={p.x + p.length / 2} y={p.y + p.width / 2 - 12} textAnchor="middle" className="pallet-number">{p.id}</text><text x={p.x + p.length / 2} y={p.y + p.width / 2 + 62} textAnchor="middle" className="pallet-size">X {((p.length) / 1000).toLocaleString('ru-RU')} м · Y {((p.width) / 1000).toLocaleString('ru-RU')} м</text>{selectedPallet === p.id && <><g className="pallet-rotate-control" onPointerDown={e => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); void rotateSelectedPallet() }} pointerEvents={p.rotatable && p.length !== p.width ? 'all' : 'none'}><circle cx={p.x + p.length / 2} cy={p.y - 125} r="52" /><text x={p.x + p.length / 2} y={p.y - 107} textAnchor="middle">↻</text></g><DimLine x1={p.x} y1={p.y - 70} x2={p.x + p.length} y2={p.y - 70} label={`${(p.length / 1000).toLocaleString('ru-RU')} м`} offset={-18} /><DimLine x1={p.x - 70} y1={p.y} x2={p.x - 70} y2={p.y + p.width} label={`${(p.width / 1000).toLocaleString('ru-RU')} м`} offset={-18} /><text x={p.x + p.length / 2} y={p.y + p.width + 115} textAnchor="middle" className="coord-label">X {(p.x / 1000).toLocaleString('ru-RU')} м · Y {(p.y / 1000).toLocaleString('ru-RU')} м</text></>}</g>)}{(() => {
   const loadGeometry = getLoadGeometry(visualPlan)
   return <g className="load-axles" pointerEvents="none">
-    {loadGeometry.axlePositions.map((x, i) => <g key={`axle-${i}`}>
-      <line x1={x} y1={0} x2={x} y2={plan.vehicleWidth} className="axle-line" />
-      <rect x={x - 115} y={plan.vehicleWidth + 12} width="230" height="58" rx="12" className="axle-label-bg" />
-      <text x={x} y={plan.vehicleWidth + 52} textAnchor="middle" className="axle-label">Ось {i + 1}</text>
-    </g>)}
+    {loadGeometry.axlePositions.map((x, i) => {
+      const sortedAxles = plan.axles.slice().sort((a, b) => a.position - b.position)
+      const axle = sortedAxles[i]
+      const axleNumber = loadGeometry.axlePositions.length - i
+      const axleRole = loadGeometry.axlePositions.length === 2
+        ? (axleNumber === 1 ? 'передняя' : 'задняя')
+        : ''
+      const isDraggable = plan.axles.length >= 2 && plan.axles.every(a => a.source === 'FIXED')
+      const isDragging = axleDrag?.id === axle.id
+      return <g
+        key={axle.id}
+        className={isDragging ? 'axle-dragging' : 'axle-drag-target'}
+        pointerEvents={isDraggable ? 'all' : 'none'}
+        onPointerDown={e => beginAxleDrag(e, axle.id, x)}
+        onPointerMove={e => updateAxleDrag(e, axle.id)}
+        onPointerUp={e => void finishAxleDrag(e, axle.id)}
+        onPointerCancel={() => setAxleDrag(null)}
+      >
+        <line x1={x} y1={0} x2={x} y2={plan.vehicleWidth} className="axle-line" />
+        <circle cx={x} cy={plan.vehicleWidth + 42} r={34} className="axle-drag-handle" />
+        <rect x={x - 150} y={plan.vehicleWidth + 82} width="300" height="58" rx="12" className="axle-label-bg" />
+        <text x={x} y={plan.vehicleWidth + 119} textAnchor="middle" className="axle-label">Ось {axleNumber}{axleRole ? ` · ${axleRole}` : ''}</text>
+      </g>
+    })}
     {plan.pallets.length > 0 && <g>
       {rotationFeedback && <g className="cg-change" pointerEvents="none"><line x1={rotationFeedback.fromX} y1={rotationFeedback.fromY} x2={rotationFeedback.toX} y2={rotationFeedback.toY} markerEnd="url(#cgChangeArrow)" /><text x={(rotationFeedback.fromX + rotationFeedback.toX) / 2} y={(rotationFeedback.fromY + rotationFeedback.toY) / 2 - 35} textAnchor="middle">ЦМ после разворота</text></g>}<circle cx={loadGeometry.cgX} cy={loadGeometry.cgY} r="48" className={rotationFeedback ? "cg-marker cg-marker-changed" : "cg-marker"} />
       <line x1={loadGeometry.cgX - 72} y1={loadGeometry.cgY} x2={loadGeometry.cgX + 72} y2={loadGeometry.cgY} className="cg-cross" />
