@@ -144,16 +144,20 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
         return updated ? { ...axle, position: updated.position, source: 'FIXED' as const } : axle
       }),
     }))
-    const calculations = await SolverService.summarize(nextPlan)
+
+    // Сначала фиксируем новую позицию в состоянии. Расчёт выполняется после этого
+    // и больше не может визуально вернуть ось в старое положение.
     set(state => ({
       history: [...state.history, plan].slice(-30),
       plan: nextPlan,
       variants: nextVariants,
       selectedVariant,
-      calculations,
       error: null,
       rotationFeedback: null,
     }))
+
+    const calculations = await SolverService.summarize(nextPlan)
+    set({ calculations })
     return true
   },
 
