@@ -105,6 +105,7 @@ function PlanForm() {
     setListening(true)
     try { setRecognized(await SpeechService.listen()) } finally { setListening(false) }
   }
+  const cancelSpeech = () => setListening(false)
   const applyPreset = (i: number) => {
     setPreset(i)
     if (presets[i][1]) { setValue('cargoLength', presets[i][1]); setValue('cargoWidth', presets[i][2]) }
@@ -124,7 +125,10 @@ function PlanForm() {
     <div className="field-grid two"><Field label="Количество" input={<input {...register('quantity')} />} error={errors.quantity?.message} /><label className="check-field inline"><input type="checkbox" {...register('rotatable')} /> Можно поворачивать</label></div>
     {recognized && <div className="recognized">Распознано: <b>{recognized}</b><button type="button" onClick={() => setRecognized('')}>×</button></div>}
     <button type="submit" className="primary-button">Построить план <span>→</span></button>
-    <button type="button" onClick={() => void speak()} className="voice-button">{listening ? '● Слушаю…' : '⌁ Описать голосом'}</button>
+    <div className="voice-actions">
+      <button type="button" onClick={() => void speak()} className="voice-button">{listening ? '● Слушаю…' : '⌁ Описать голосом'}</button>
+      {listening && <button type="button" onClick={cancelSpeech} className="voice-cancel">Отмена</button>}
+    </div>
   </form>
 }
 
