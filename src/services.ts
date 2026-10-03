@@ -368,9 +368,7 @@ export const findMinimumVehicleSize = (plan: LoadPlan): VehicleFitSuggestion | n
     }
   }
 
-  const minimumHeight = maxCargoLength > 0
-    ? Math.max(...plan.cargoGroups.map(group => group.height))
-    : 0
+  const minimumHeight = Math.max(...plan.cargoGroups.map(group => group.height), 0)
   const heightProblem = minimumHeight > plan.vehicleHeight
 
   return {
