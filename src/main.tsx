@@ -369,19 +369,35 @@ function PlanForm() {
     <label className="check-field"><input type="checkbox" {...register('unavailable')} /> Есть недоступная зона</label>
     <div className="field-grid four"><Field label="X, м" input={<input inputMode="decimal" {...register('unavailableX')} />} error={errors.unavailableX?.message} /><Field label="Y, м" input={<input inputMode="decimal" {...register('unavailableY')} />} error={errors.unavailableY?.message} /><Field label="Длина, м" input={<input inputMode="decimal" {...register('unavailableLength')} />} error={errors.unavailableLength?.message} /><Field label="Ширина, м" input={<input inputMode="decimal" {...register('unavailableWidth')} />} error={errors.unavailableWidth?.message} /></div>
     <div className="section-label cargo-label">Автомобиль и оси</div>
-    <div className="field-grid two axle-mode-grid">
-      <Field label="Количество осей" input={<input {...register('axleCount')} placeholder="2" />} error={errors.axleCount?.message} />
-      <Field label="Положение осей" input={<select {...register('axleMode')}><option value="AUTO">Автоматически · ориентировочно</option><option value="FIXED">Задать вручную</option></select>} error={errors.axleMode?.message} />
-    </div>
-    {watch('axleMode') === 'FIXED' && <div className="axle-position-block">
-      <small className="field-hint">Укажите расстояние от задней стенки кузова до центра каждой оси. Значения должны идти по возрастанию.</small>
-      <div className="field-grid four">
-        {Array.from({ length: Math.max(2, Number(watch('axleCount')) || 2) }, (_, index) =>
-          <Field key={index} label={`Ось ${index + 1}, м от задней стенки`} input={<input inputMode="decimal" {...register(`axlePositions.${index}` as const)} />} error={errors.axlePositions?.[index]?.message} />
-        )}
+    <div className="axle-control-card">
+      <div className="axle-control-head">
+        <strong>Положение осей</strong>
+        <span>От задней стенки кузова</span>
       </div>
-    </div>}
-    {watch('axleMode') === 'AUTO' && <small className="field-hint">Положение осей не известно. Используется ориентировочная модель для визуальной оценки центра массы. Для точной проверки укажите координаты осей вручную.</small>}
+      <div className="axle-mode-switch" role="group" aria-label="Режим задания осей">
+        <button type="button" className={watch('axleMode') === 'AUTO' ? 'active' : ''} onClick={() => setValue('axleMode', 'AUTO', { shouldValidate: true })}>
+          Автоматически
+          <small>ориентировочно</small>
+        </button>
+        <button type="button" className={watch('axleMode') === 'FIXED' ? 'active' : ''} onClick={() => setValue('axleMode', 'FIXED', { shouldValidate: true })}>
+          Задать вручную
+          <small>точные координаты</small>
+        </button>
+      </div>
+      <div className="field-grid two axle-mode-grid">
+        <Field label="Количество осей" input={<input {...register('axleCount')} placeholder="2" />} error={errors.axleCount?.message} />
+        <div className="axle-current-mode"><span>Режим</span><b>{watch('axleMode') === 'FIXED' ? 'Ручной ввод' : 'Автоматическая модель'}</b></div>
+      </div>
+      {watch('axleMode') === 'FIXED' && <div className="axle-position-block">
+        <small className="field-hint">Укажите расстояние от задней стенки кузова до центра каждой оси. Значения должны идти по возрастанию.</small>
+        <div className="field-grid four">
+          {Array.from({ length: Math.max(2, Number(watch('axleCount')) || 2) }, (_, index) =>
+            <Field key={index} label={`Ось ${index + 1}, м от задней стенки`} input={<input inputMode="decimal" {...register(`axlePositions.${index}` as const)} />} error={errors.axlePositions?.[index]?.message} />
+          )}
+        </div>
+      </div>}
+      {watch('axleMode') === 'AUTO' && <small className="field-hint">Положение осей не известно. Используется ориентировочная модель для визуальной оценки центра массы. Для точной проверки выберите «Задать вручную».</small>}
+    </div>
     <div className="section-label cargo-label">Грузовые группы</div>
     <div className="cargo-groups">
       {fields.map((field, index) => (
