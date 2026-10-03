@@ -292,3 +292,9 @@
 .axle-drag-handle { pointer-events: all; }
 .axle-drag-target:hover .axle-role-label,
 .axle-dragging .axle-role-label { opacity: 1; }
+
+.axle-hit-area { stroke: transparent; stroke-width: 90; cursor: ew-resize; pointer-events: stroke; }
+.axle-drag-handle { stroke-width: 12; cursor: ew-resize; pointer-events: all; }
+.axle-drag-hint { font-size: 28px; font-weight: 700; fill: #446168; pointer-events: none; }
+.axle-drag-target:hover .axle-hit-area,
+.axle-dragging .axle-hit-area { stroke: rgba(167,237,79,.18); }
