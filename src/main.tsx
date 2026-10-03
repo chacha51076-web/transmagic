@@ -34,8 +34,27 @@ const schema = z.object({
   obstacleMode: z.enum(['AUTO', 'FIXED']),
   obstacleWeight: optionalNonNegativeNumberField,
   obstacleX: numberField.pipe(z.number().min(0)), obstacleY: numberField.pipe(z.number().min(0)), obstacleLength: numberField.pipe(z.number().min(0)), obstacleWidth: numberField.pipe(z.number().min(0)),
-  unavailable: z.boolean(), unavailableX: numberField.pipe(z.number().min(0)), unavailableY: numberField.pipe(z.number().min(0)), unavailableLength: numberField.pipe(z.number().min(0)), unavailableWidth: numberField.pipe(z.number().min(0)), axleCount: z.coerce.number().int().min(0).max(8),
+  unavailable: z.boolean(), unavailableX: numberField.pipe(z.number().min(0)), unavailableY: numberField.pipe(z.number().min(0)), unavailableLength: numberField.pipe(z.number().min(0)), unavailableWidth: numberField.pipe(z.number().min(0)),
+  axleCount: z.coerce.number().int().min(0).max(8),
+  axleMode: z.enum(['AUTO', 'FIXED']),
+  axlePositions: z.array(numberField.pipe(z.number().min(0))).length(8),
   cargoGroups: z.array(cargoGroupSchema).min(1).max(8),
+}).superRefine((value, ctx) => {
+  if (value.axleMode !== 'FIXED') return
+  const count = Math.max(2, value.axleCount)
+  const positions = value.axlePositions.slice(0, count)
+  if (positions.length < count) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['axlePositions'], message: 'Укажите положение каждой оси.' })
+    return
+  }
+  for (let i = 0; i < positions.length; i += 1) {
+    if (positions[i] > value.vehicleLength) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['axlePositions', i], message: 'Ось должна находиться внутри длины кузова.' })
+    }
+    if (i > 0 && positions[i] <= positions[i - 1]) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['axlePositions', i], message: 'Оси должны идти от задней стенки к кабине.' })
+    }
+  }
 })
 type FormValues = z.infer<typeof schema>
 const statusClass: Record<CheckStatus, string> = { CHECKED: 'status-ok', VIOLATION: 'status-bad', NOT_CHECKED: 'status-idle', CALCULATED: 'status-calculated' }
@@ -52,7 +71,8 @@ const getLoadGeometry = (plan: LoadPlan) => {
   const cgY = totalWeight > 0
     ? (plan.pallets.reduce((sum, p) => sum + p.weight * (p.y + p.width / 2), 0) + plan.obstacles.reduce((sum, o) => sum + (o.weight ?? 0) * (o.y + o.width / 2), 0)) / totalWeight
     : plan.vehicleWidth / 2
-  return { axlePositions, cgX, cgY, assumed: plan.axles.length < 2 }
+  const automatic = plan.axles.length < 2 || plan.axles.some(axle => axle.source === 'AUTO')
+  return { axlePositions, cgX, cgY, assumed: automatic }
 }
 const presets = [
   ['EUR 1,2 × 0,8 м', 1.2, 0.8], ['1,2 × 1,0 м', 1.2, 1.0], ['1,2 × 1,2 м', 1.2, 1.2], ['Свои размеры', 0, 0],
@@ -70,7 +90,7 @@ function PlanForm() {
     resolver: zodResolver(schema),
     defaultValues: {
       vehicleLength: 6, vehicleWidth: 2.05, vehicleHeight: 2.2, coolerLength: 1.23, coolerHeight: 0.29, coolerProjection: 0.68, payloadCapacityKg: undefined, doorWidth: 0.23, gap: 0,
-      hasObstacle: false, obstacleMode: 'AUTO', obstacleWeight: 0, obstacleX: 5.23, obstacleY: 0.7, obstacleLength: 0.42, obstacleWidth: 0.54, unavailable: false, unavailableX: 2.5, unavailableY: 0, unavailableLength: 1.0, unavailableWidth: 2.05, axleCount: 2,
+      hasObstacle: false, obstacleMode: 'AUTO', obstacleWeight: 0, obstacleX: 5.23, obstacleY: 0.7, obstacleLength: 0.42, obstacleWidth: 0.54, unavailable: false, unavailableX: 2.5, unavailableY: 0, unavailableLength: 1.0, unavailableWidth: 2.05, axleCount: 2, axleMode: 'AUTO', axlePositions: [4.2, 5.4, 0, 0, 0, 0, 0, 0],
       cargoGroups: [{ name: 'EUR паллета', length: 1.2, width: 0.8, height: 0, weight: 450, count: 10, rotatable: true, stackable: false }],
     },
   })
@@ -162,13 +182,13 @@ function PlanForm() {
         return score + (verticalTouch ? 2 : 0) + (horizontalTouch ? 2 : 0)
       }, 0)
       const axleCount = Math.max(2, v.axleCount)
-      // Без введённых координат осей используем минимальную 2-осную
-      // модель: оси находятся в передней части кузова, а груз стараемся
-      // держать между ними. Это эвристика для планирования, а не расчёт
-      // фактических реакций на оси.
-      const assumedAxlePositions = axleCount === 2
-        ? [v.vehicleLength * 1000 * 0.70, v.vehicleLength * 1000 * 0.90]
-        : Array.from({ length: axleCount }, (_, i) => v.vehicleLength * 1000 * (0.60 + 0.30 * i / Math.max(1, axleCount - 1)))
+      const assumedAxlePositions = Array.from({ length: axleCount }, (_, i) =>
+        v.axleMode === 'FIXED'
+          ? v.axlePositions[i] * 1000
+          : v.vehicleLength * 1000 * (axleCount === 2
+              ? (i === 0 ? 0.70 : 0.90)
+              : (0.60 + 0.30 * i / Math.max(1, axleCount - 1)))
+      )
       const targetCenter = (assumedAxlePositions[0] + assumedAxlePositions[assumedAxlePositions.length - 1]) / 2
       const existingWeight = placed.reduce((sum, p) => sum + p.group.weight, 0)
       const existingMoment = placed.reduce((sum, p) => sum + p.group.weight * (p.x + p.length / 2), 0)
@@ -267,10 +287,13 @@ function PlanForm() {
       // фактическая нагрузка на оси на этапе 1 всё равно не проверяется.
       axles: Array.from({ length: Math.max(2, v.axleCount) }, (_, i) => ({
         id: `axle-${i + 1}`,
-        position: Math.max(2, v.axleCount) === 2
-          ? v.vehicleLength * 1000 * (i === 0 ? 0.70 : 0.90)
-          : v.vehicleLength * 1000 * (0.60 + 0.30 * i / Math.max(1, Math.max(2, v.axleCount) - 1)),
+        position: v.axleMode === 'FIXED'
+          ? v.axlePositions[i] * 1000
+          : v.vehicleLength * 1000 * (Math.max(2, v.axleCount) === 2
+              ? (i === 0 ? 0.70 : 0.90)
+              : (0.60 + 0.30 * i / Math.max(1, Math.max(2, v.axleCount) - 1))),
         capacityKg: 0,
+        source: v.axleMode,
       })),
       cargoGroups,
       pallets,
@@ -346,7 +369,19 @@ function PlanForm() {
     <label className="check-field"><input type="checkbox" {...register('unavailable')} /> Есть недоступная зона</label>
     <div className="field-grid four"><Field label="X, м" input={<input inputMode="decimal" {...register('unavailableX')} />} error={errors.unavailableX?.message} /><Field label="Y, м" input={<input inputMode="decimal" {...register('unavailableY')} />} error={errors.unavailableY?.message} /><Field label="Длина, м" input={<input inputMode="decimal" {...register('unavailableLength')} />} error={errors.unavailableLength?.message} /><Field label="Ширина, м" input={<input inputMode="decimal" {...register('unavailableWidth')} />} error={errors.unavailableWidth?.message} /></div>
     <div className="section-label cargo-label">Автомобиль и оси</div>
-    <Field label="Количество осей" input={<input {...register('axleCount')} placeholder="2 — если не указано" />} error={errors.axleCount?.message} />
+    <div className="field-grid two axle-mode-grid">
+      <Field label="Количество осей" input={<input {...register('axleCount')} placeholder="2" />} error={errors.axleCount?.message} />
+      <Field label="Положение осей" input={<select {...register('axleMode')}><option value="AUTO">Автоматически · ориентировочно</option><option value="FIXED">Задать вручную</option></select>} error={errors.axleMode?.message} />
+    </div>
+    {watch('axleMode') === 'FIXED' && <div className="axle-position-block">
+      <small className="field-hint">Укажите расстояние от задней стенки кузова до центра каждой оси. Значения должны идти по возрастанию.</small>
+      <div className="field-grid four">
+        {Array.from({ length: Math.max(2, Number(watch('axleCount')) || 2) }, (_, index) =>
+          <Field key={index} label={`Ось ${index + 1}, м от задней стенки`} input={<input inputMode="decimal" {...register(`axlePositions.${index}` as const)} />} error={errors.axlePositions?.[index]?.message} />
+        )}
+      </div>
+    </div>}
+    {watch('axleMode') === 'AUTO' && <small className="field-hint">Положение осей не известно. Используется ориентировочная модель для визуальной оценки центра массы. Для точной проверки укажите координаты осей вручную.</small>}
     <div className="section-label cargo-label">Грузовые группы</div>
     <div className="cargo-groups">
       {fields.map((field, index) => (
@@ -574,7 +609,7 @@ function Visualizer() {
       <rect x={loadGeometry.cgX + 70} y={loadGeometry.cgY - 105} width="430" height="78" rx="14" className="cg-label-bg" />
       <text x={loadGeometry.cgX + 285} y={loadGeometry.cgY - 54} textAnchor="middle" className="cg-label">ЦЕНТР МАССЫ</text>
     </g>}
-    <text x={plan.vehicleLength - 20} y={-185} textAnchor="end" className="load-model-note">{loadGeometry.assumed ? 'Оси: расчётная 2-осная модель' : 'Оси: введены пользователем'}</text>
+    <text x={plan.vehicleLength - 20} y={-185} textAnchor="end" className="load-model-note">{loadGeometry.assumed ? 'Оси: автоматическая расчётная модель' : 'Оси: введены пользователем'}</text>
   </g>
 })()}<g className="coordinate-system" pointerEvents="none"><line x1="0" y1={plan.vehicleWidth + 175} x2={plan.vehicleLength} y2={plan.vehicleWidth + 175} markerEnd="url(#axisArrow)" /><text x={plan.vehicleLength / 2} y={plan.vehicleWidth + 235} textAnchor="middle">X — ДЛИНА КУЗОВА →</text><line x1="-170" y1={plan.vehicleWidth} x2="-170" y2="0" markerEnd="url(#axisArrow)" /><text x="-245" y={plan.vehicleWidth / 2} textAnchor="middle" transform={`rotate(-90 -245 ${plan.vehicleWidth / 2})`}>Y — ШИРИНА ↑</text><text x="0" y={plan.vehicleWidth + 205} textAnchor="start">0 м</text><text x={plan.vehicleLength} y={plan.vehicleWidth + 205} textAnchor="end">{(plan.vehicleLength / 1000).toLocaleString('ru-RU')} м</text><text x="-195" y={plan.vehicleWidth + 20} textAnchor="end">0 м</text><text x="-195" y="20" textAnchor="end">{(plan.vehicleWidth / 1000).toLocaleString('ru-RU')} м</text><text x={plan.vehicleLength + 80} y={plan.vehicleWidth / 2} className="orientation-label">ПЕРЕД<br/>КАБИНА</text><text x="-20" y={plan.vehicleWidth / 2} textAnchor="end" className="orientation-label">ЗАДНИЕ<br/>ДВЕРИ</text></g></svg></div></section><section className="bottom-info"><div className="selected-card"><span className="mini-pallet">▦</span><div><span className="eyebrow">ВЫБРАНА ПАЛЛЕТА</span><b>Паллета #{selected?.id ?? '—'} <small>· {selected?.weight ?? '—'} кг</small></b>{selected && <><div className="pallet-actions"><button type="button" onClick={() => void rotateSelectedPallet()} disabled={!selected.rotatable || selected.length === selected.width}>↻ Развернуть паллету</button><label>Вес, кг <input type="number" min="1" value={selected.weight} onChange={e => void setSelectedPalletWeight(Number(e.target.value))} /></label></div><div className="compact-hint">Потяните паллету мышью или пальцем. Во время перемещения схема сразу показывает, можно ли поставить груз без пересечения.</div></>}{selected && <div className="pallet-details"><span><b>Габариты в кузове</b> · X: {(selected.length / 1000).toLocaleString('ru-RU')} м · Y: {(selected.width / 1000).toLocaleString('ru-RU')} м</span><span><b>Положение</b> · X: {(selected.x / 1000).toLocaleString('ru-RU')} м · Y: {(selected.y / 1000).toLocaleString('ru-RU')} м</span><span><b>Высота</b> · {(selected.height / 1000).toLocaleString('ru-RU')} м</span><span><b>Ориентация</b> · {orientation}</span></div>}</div>{conflictReason && <div className="conflict-note">⚠ {conflictReason}</div>}</div><div className="summary"><span className="summary-title">ПРОВЕРКИ · ЭТАП 1</span>{calculations.map(c => <div className={`check ${c.id === 'count' && c.status === 'VIOLATION' ? 'check-placement-alert' : ''}`} key={c.id}><span className={`dot ${statusClass[c.status]}`} /><div><b>{c.label}</b><small>{c.note}</small>{c.id === 'count' && c.status === 'VIOLATION' && <div className="placement-alert"><div className="placement-alert-top"><strong>Не помещается: {unplacedCount} шт.</strong><span>{placedCount} из {requestedCount}</span></div><div className="placement-progress"><span style={{ width: `${requestedCount ? Math.min(100, placedCount / requestedCount * 100) : 0}%` }} /></div></div>}</div><strong>{c.value}</strong><em className={statusClass[c.status]}>{statusText[c.status]}</em></div>)}</div></section><div className="mode-note">2D схема · 3D — скоро</div></main>
 }
