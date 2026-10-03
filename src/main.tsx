@@ -17,7 +17,7 @@ const cargoGroupSchema = z.object({
   weight: numberField.pipe(z.number().min(1)),
   count: z.coerce.number().int().min(1).max(100),
   rotatable: z.boolean(),
-  stackable: z.literal(false),
+  stackable: z.boolean().default(false),
 })
 const schema = z.object({
   vehicleLength: numberField.pipe(z.number().min(0.1)), vehicleWidth: numberField.pipe(z.number().min(0.1)), vehicleHeight: numberField.pipe(z.number().min(0.1)),
@@ -229,7 +229,7 @@ function PlanForm() {
             <Field label="Количество" input={<input {...register(`cargoGroups.${index}.count`)} />} error={errors.cargoGroups?.[index]?.count?.message} />
             <div className="group-options">
               <label className="check-field inline"><input type="checkbox" {...register(`cargoGroups.${index}.rotatable`)} /> Можно поворачивать</label>
-              <label className="check-field inline muted-option"><input type="checkbox" disabled {...register(`cargoGroups.${index}.stackable`)} /> Ставить в штабель (скоро)</label>
+              <label className="check-field inline muted-option"><input type="checkbox" disabled checked readOnly /> Ставить в штабель (скоро)</label>
             </div>
           </div>
         </section>
