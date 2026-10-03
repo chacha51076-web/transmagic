@@ -317,7 +317,71 @@ export const PlacementService = {
       return placed
     }
 
+    // For homogeneous pallet groups, explicitly test mixed-orientation rows.
+    // This is important for Euro pallets in a ~2 m body: one 800 mm row plus
+    // one 1200 mm rotated row can use the width much better than two identical rows.
+    const firstGroup = items[0]?.group
+    const homogeneous = Boolean(firstGroup) && items.every(
+      item =>
+        item.group.length === firstGroup?.length &&
+        item.group.width === firstGroup?.width &&
+        item.group.height === firstGroup?.height,
+    )
+
+    const buildRowPattern = (pattern: Array<'normal' | 'rotated'>) => {
+      if (!homogeneous || !firstGroup) return []
+
+      const rows = pattern.map(mode => {
+        const [length, width] =
+          mode === 'rotated' && firstGroup.rotatable && firstGroup.length !== firstGroup.width
+            ? [firstGroup.width, firstGroup.length]
+            : [firstGroup.length, firstGroup.width]
+        return { mode, length, width, y: 0 }
+      })
+
+      const totalWidth = rows.reduce((sum, row) => sum + row.width, 0)
+      if (totalWidth > plan.vehicleWidth + 0.001) return []
+
+      const startY = Math.max(0, (plan.vehicleWidth - totalWidth) / 2)
+      let cursorY = startY
+      for (const row of rows) {
+        row.y = cursorY
+        cursorY += row.width
+      }
+
+      const placed: Pallet[] = []
+      for (const item of items) {
+        let placedThisItem = false
+
+        for (const row of rows) {
+          const rotated = row.mode === 'rotated' && item.group.rotatable && item.group.length !== item.group.width
+          const length = rotated ? item.group.width : item.group.length
+          const width = rotated ? item.group.length : item.group.width
+
+          for (let x = 0; x + length <= plan.vehicleLength; x += 50) {
+            const candidate = makeCandidate(item, length, width, x, row.y, placed)
+            if (!candidate) continue
+            placed.push(candidate)
+            placedThisItem = true
+            break
+          }
+
+          if (placedThisItem) break
+        }
+      }
+
+      return placed
+    }
+
     const variants = [
+      ...(homogeneous
+        ? [
+            buildRowPattern(['normal', 'rotated']),
+            buildRowPattern(['rotated', 'normal']),
+            buildRowPattern(['normal', 'normal']),
+            buildRowPattern(['rotated', 'rotated']),
+          ]
+        : []),
       buildShelf(false, false),
       buildShelf(true, false),
       buildColumns(false, true),
