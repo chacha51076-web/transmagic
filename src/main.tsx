@@ -30,8 +30,8 @@ const schema = z.object({
   cargoGroups: z.array(cargoGroupSchema).min(1).max(8),
 })
 type FormValues = z.infer<typeof schema>
-const statusClass: Record<CheckStatus, string> = { CHECKED: 'status-ok', VIOLATION: 'status-bad', NOT_CHECKED: 'status-idle' }
-const statusText: Record<CheckStatus, string> = { CHECKED: 'ПРОВЕРЕНО', VIOLATION: 'НАРУШЕНИЕ', NOT_CHECKED: 'НЕ ПРОВЕРЕНО' }
+const statusClass: Record<CheckStatus, string> = { CHECKED: 'status-ok', VIOLATION: 'status-bad', NOT_CHECKED: 'status-idle', CALCULATED: 'status-calculated' }
+const statusText: Record<CheckStatus, string> = { CHECKED: 'ПРОВЕРЕНО', VIOLATION: 'НАРУШЕНИЕ', NOT_CHECKED: 'НЕ ПРОВЕРЕНО', CALCULATED: 'РАССЧИТАНО' }
 const presets = [
   ['EUR 1,2 × 0,8 м', 1.2, 0.8], ['1,2 × 1,0 м', 1.2, 1.0], ['1,2 × 1,2 м', 1.2, 1.2], ['Свои размеры', 0, 0],
 ] as const
