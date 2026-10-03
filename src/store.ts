@@ -11,6 +11,8 @@ interface LoadPlanState {
   isLoading: boolean
   error: string | null
   setSelectedPallet: (id: number | null) => void
+  rotateSelectedPallet: () => Promise<void>
+  setSelectedPalletWeight: (weight: number) => Promise<void>
   setSelectedVariant: (index: number) => Promise<void>
   setPlanVariants: (plans: LoadPlan[]) => Promise<void>
   loadDemo: () => Promise<void>
@@ -19,6 +21,41 @@ interface LoadPlanState {
 export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
   plan: null, variants: [], selectedVariant: 0, calculations: [], selectedPallet: null, isLoading: false, error: null,
   setSelectedPallet: (selectedPallet) => set({ selectedPallet }),
+  rotateSelectedPallet: async () => {
+    const { plan, selectedPallet, variants, selectedVariant } = get()
+    if (!plan || selectedPallet == null) return
+    const pallet = plan.pallets.find(p => p.id === selectedPallet)
+    if (!pallet || !pallet.rotatable || pallet.length === pallet.width) return
+    const nextLength = pallet.width
+    const nextWidth = pallet.length
+    const cx = pallet.x + pallet.length / 2
+    const cy = pallet.y + pallet.width / 2
+    const nextX = cx - nextLength / 2
+    const nextY = cy - nextWidth / 2
+    const overlaps = (a: {x:number;y:number;length:number;width:number}, b: {x:number;y:number;length:number;width:number}) =>
+      a.x < b.x + b.length && a.x + a.length > b.x && a.y < b.y + b.width && a.y + a.width > b.y
+    const candidate = { ...pallet, length: nextLength, width: nextWidth, x: nextX, y: nextY }
+    const blocked = [...plan.obstacles, ...plan.unavailableZones, ...plan.gaps]
+    const invalid = nextX < 0 || nextY < 0 || nextX + nextLength > plan.vehicleLength || nextY + nextWidth > plan.vehicleWidth ||
+      blocked.some(b => overlaps(candidate, b)) ||
+      plan.pallets.some(p => p.id !== pallet.id && overlaps(candidate, p))
+    if (invalid) {
+      set({ error: 'Паллету нельзя развернуть в этом месте: не хватает свободного пространства.' })
+      return
+    }
+    const nextPlan = { ...plan, pallets: plan.pallets.map(p => p.id === pallet.id ? candidate : p) }
+    const calculations = await SolverService.summarize(nextPlan)
+    const nextVariants = variants.map((v, i) => i === selectedVariant ? nextPlan : v)
+    set({ plan: nextPlan, variants: nextVariants, calculations, error: null })
+  },
+  setSelectedPalletWeight: async (weight) => {
+    const { plan, selectedPallet, variants, selectedVariant } = get()
+    if (!plan || selectedPallet == null || !Number.isFinite(weight) || weight < 1) return
+    const nextPlan = { ...plan, pallets: plan.pallets.map(p => p.id === selectedPallet ? { ...p, weight } : p) }
+    const calculations = await SolverService.summarize(nextPlan)
+    const nextVariants = variants.map((v, i) => i === selectedVariant ? nextPlan : v)
+    set({ plan: nextPlan, variants: nextVariants, calculations, error: null })
+  },
   setSelectedVariant: async (selectedVariant) => {
     const variants = get().variants
     const plan = variants[selectedVariant]
