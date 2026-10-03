@@ -205,3 +205,6 @@
 .coordinate-system .axis-arrow{fill:#203f46}
 .coordinate-system text{font-size:68px;letter-spacing:1px;paint-order:stroke;stroke:#fff;stroke-width:10}
 .coordinate-system .orientation-label{font-size:56px;letter-spacing:2px}
+
+.status-calculated{color:#8a5a00;background:#fff4d6;border-color:#e7c66b}
+.dot.status-calculated{background:#d99a16}
