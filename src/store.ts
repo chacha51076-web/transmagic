@@ -59,31 +59,73 @@ export const useLoadPlanStore = create<LoadPlanState>((set, get) => ({
   rotateSelectedPallet: async () => {
     const { plan, selectedPallet, variants, selectedVariant } = get()
     if (!plan || selectedPallet == null) return
+
     const pallet = plan.pallets.find(p => p.id === selectedPallet)
     if (!pallet || !pallet.rotatable || pallet.length === pallet.width) return
+
     const rotated = { ...pallet, length: pallet.width, width: pallet.length }
     const blocked = [...plan.obstacles.filter(o => o.blocksFloor !== false), ...plan.unavailableZones, ...plan.gaps]
     const overlaps = (a: Rect, z: Rect) =>
       a.x < z.x + z.length && a.x + a.length > z.x &&
       a.y < z.y + z.width && a.y + a.width > z.y
-    const valid =
-      rotated.x >= 0 && rotated.y >= 0 &&
-      rotated.x + rotated.length <= plan.vehicleLength &&
-      rotated.y + rotated.width <= plan.vehicleWidth &&
-      !blocked.some(z => overlaps(rotated, z)) &&
-      plan.pallets.filter(p => p.id !== pallet.id).every(other => !overlaps(rotated, other))
-    if (!valid) {
-      set({ error: "Развернуть нельзя в текущем месте. Переместите паллету в свободную зону и повторите." })
-      return
+
+    const verticalZones = plan.obstacles.filter(o => (o.height ?? 0) > 0)
+    const verticalClear = (candidate: typeof rotated) =>
+      candidate.height <= 0 ||
+      (candidate.height <= plan.vehicleHeight &&
+        !verticalZones.some(zone =>
+          candidate.height > plan.vehicleHeight - (zone.height ?? 0) &&
+          overlaps(candidate, zone)
+        ))
+
+    const isValid = (candidate: typeof rotated, others: typeof plan.pallets) =>
+      candidate.x >= 0 &&
+      candidate.y >= 0 &&
+      candidate.x + candidate.length <= plan.vehicleLength &&
+      candidate.y + candidate.width <= plan.vehicleWidth &&
+      verticalClear(candidate) &&
+      !blocked.some(zone => overlaps(candidate, zone)) &&
+      others.every(other => !overlaps(candidate, other))
+
+    const others = plan.pallets.filter(p => p.id !== pallet.id)
+
+    // First try to rotate in place.
+    let placed = { ...rotated }
+    if (!isValid(placed, others)) {
+      // If the rotated pallet does not fit in its current footprint, look
+      // for the nearest free snapped position. This makes the rotation
+      // control useful even when the pallet is close to a wall or neighbour.
+      let best: typeof rotated | null = null
+      let bestDistance = Number.POSITIVE_INFINITY
+
+      for (let y = 0; y <= plan.vehicleWidth - rotated.width; y += 50) {
+        for (let x = 0; x <= plan.vehicleLength - rotated.length; x += 50) {
+          const candidate = { ...rotated, x, y }
+          if (!isValid(candidate, others)) continue
+          const distance = Math.abs(x - pallet.x) + Math.abs(y - pallet.y)
+          if (distance < bestDistance) {
+            best = candidate
+            bestDistance = distance
+          }
+        }
+      }
+
+      if (!best) {
+        set({ error: 'Развернуть паллету нельзя: после разворота нет свободного места в кузове.' })
+        return
+      }
+      placed = best
     }
-    const nextPlan = {
+
+    const nextPlan = normalizePlanEquipment({
       ...plan,
-      pallets: plan.pallets.map(p => p.id === pallet.id ? rotated : p),
-    }
+      pallets: plan.pallets.map(p => p.id === pallet.id ? placed : p),
+    })
     const calculations = await SolverService.summarize(nextPlan)
     const nextVariants = variants.map((v, i) => i === selectedVariant ? nextPlan : v)
     const from = calculateCg(plan)
     const to = calculateCg(nextPlan)
+
     set(state => ({
       history: [...state.history, plan].slice(-30),
       plan: nextPlan,
