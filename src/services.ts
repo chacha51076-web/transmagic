@@ -17,7 +17,7 @@ export const AssistantService = {
       vehicleLength: 6000, vehicleWidth: 2050, vehicleHeight: 2200,
       payloadCapacityKg: undefined,
       doors: [{ id: 'rear', x: 0, y: 0, length: 230, width: 2050, label: 'Двери' }],
-      gaps: [], obstacles: [{ id: 'cooler', x: 5320, y: 410, length: 680, width: 1230, height: 290, label: 'Холодильная установка', blocksFloor: false }],
+      gaps: [], obstacles: [{ id: 'cooler', x: 5320, y: 380, length: 680, width: 1290, height: 290, label: 'Холодильная установка', blocksFloor: false }],
       unavailableZones: [], axles: [{ id: 'axle-1', position: 4200, capacityKg: 0, source: 'AUTO' }, { id: 'axle-2', position: 5400, capacityKg: 0, source: 'AUTO' }],
       cargoGroups: [{ id: 'eur', name: 'EUR паллета', length: 1200, width: 800, height: 0, weight: 450, count: 10, rotatable: true, stackable: false }],
       pallets,
