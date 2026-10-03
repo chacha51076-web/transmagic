@@ -224,18 +224,24 @@ export const PlacementService = {
           const ys = shelfLevels(placed)
           if (reverseRows) ys.reverse()
 
-          // Prefer a shelf whose pallet center is closest to the vehicle
-          // centerline. This prevents small loads from being packed against
-          // one side when there is ample free width.
-          const targetY = Math.max(0, (plan.vehicleWidth - width) / 2)
-          ys.sort((a, b) => {
-            const da = Math.abs(a - targetY)
-            const db = Math.abs(b - targetY)
-            if (da !== db) return da - db
-            return a - b
-          })
+          // Prefer a compact set of shelves that actually maximizes
+          // the number of rows across the body. A single centered shelf can
+          // leave too little room above and below it, which would miss valid
+          // layouts such as 2 x 5 EUR pallets in a 2.05 m body.
+          const rowCount = Math.max(1, Math.floor((plan.vehicleWidth + 0.001) / width))
+          const rowStart = Math.max(0, (plan.vehicleWidth - rowCount * width) / 2)
+          const preferredYs = Array.from(
+            { length: rowCount },
+            (_, index) => rowStart + index * width,
+          )
 
-          for (const y of ys) {
+          const preferredSet = new Set(preferredYs.map(value => value.toFixed(3)))
+          const fallbackYs = ys.filter(value => !preferredSet.has(value.toFixed(3)))
+          const orderedYs = reverseRows
+            ? [...preferredYs.slice().reverse(), ...fallbackYs.reverse()]
+            : [...preferredYs, ...fallbackYs]
+
+          for (const y of orderedYs) {
             if (y + width > plan.vehicleWidth) continue
 
             // Search from the rear doors forward. At each shelf we choose
