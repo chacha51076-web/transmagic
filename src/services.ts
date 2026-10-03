@@ -115,15 +115,19 @@ export const PlacementService = {
               (candidateSide === 'top' && placed.some(p => p.y + p.width / 2 >= targetY)) ||
               (candidateSide === 'bottom' && placed.some(p => p.y + p.width / 2 < targetY))
             ) ? 250000 : 0
+            const topCount = placed.filter(p => p.y + p.width / 2 < targetY).length + (candidateSide === 'top' ? 1 : 0)
+            const bottomCount = placed.filter(p => p.y + p.width / 2 >= targetY).length + (candidateSide === 'bottom' ? 1 : 0)
+            const sideImbalance = Math.abs(topCount - bottomCount)
 
             const score =
               orientationBonus +
               oppositeSideBonus +
-              wall * (mode === 'REAR' ? 3000 : 1000) +
+              wall * (mode === 'REAR' ? 250000 : 200000) +
               compact * 6000 +
               sideDiversity * 1000 -
+              sideImbalance * 150000 -
               longitudinalPenalty * (mode === 'AXLE' ? 26000 : 18000) -
-              transversePenalty * 80000 -
+              transversePenalty * 50000 -
               x * (mode === 'REAR' ? 10 : 1)
 
             if (score > bestScore) {
