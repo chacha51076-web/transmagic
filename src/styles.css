@@ -345,8 +345,8 @@
   background:#e53935!important;
   box-shadow:0 0 0 4px rgba(229,57,53,.16);
 }
-.check-placement-alert .check strong,
-.check-placement-alert .check b{
+.check-placement-alert strong,
+.check-placement-alert b{
   color:#7f120d;
 }
 .pallet-conflict{
