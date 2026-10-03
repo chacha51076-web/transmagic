@@ -1,4 +1,4 @@
-export type CheckStatus = 'CHECKED' | 'VIOLATION' | 'NOT_CHECKED'
+export type CheckStatus = 'CHECKED' | 'VIOLATION' | 'NOT_CHECKED' | 'CALCULATED'
 
 export interface Obstacle { id: string; x: number; y: number; length: number; width: number; label: string }
 export interface DoorGap { id: string; x: number; y: number; length: number; width: number; label: string }
